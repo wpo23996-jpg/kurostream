@@ -98,6 +98,7 @@ class DeepfakeProvider(BaseProvider):
                 r'<enclosure[^>]+url="([^"]+)"',
                 r'<media:content[^>]+url="([^"]+)"',
                 r'<media:thumbnail[^>]+url="([^"]+)"',
+                r'<img[^>]+src="([^"]+)"',   # description 里常带封面
             ):
                 cm = re.search(pat, block, re.I)
                 if cm:
