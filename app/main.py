@@ -511,8 +511,34 @@ def media_raw(u: str, r: str = "", request: Request = None):
 
     sess = cr.Session(impersonate=settings.impersonate)
     headers = {"User-Agent": settings.user_agent, "Referer": ref, "Accept": "*/*"}
-    if rng:
-        headers["Range"] = rng
+
+    # 小分片：普通请求整块读，写缓存
+    if not rng:
+        try:
+            resp = sess.get(url, headers=headers, timeout=60, allow_redirects=True)
+            body = resp.content
+            status = resp.status_code
+            ctype = resp.headers.get("content-type", "application/octet-stream")
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(502, f"upstream failed: {exc}") from exc
+        finally:
+            sess.close()
+        if status >= 400:
+            raise HTTPException(status, f"upstream {status}")
+        if body:
+            segcache.put(url, body)
+        return Response(
+            body,
+            media_type=ctype,
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Cache-Control": "public, max-age=86400",
+                "X-Seg-Cache": "miss" if body else "empty",
+            },
+        )
+
+    # 带 Range（大文件拖动）：流式转发
+    headers["Range"] = rng
     try:
         resp = sess.get(url, headers=headers, stream=True, timeout=120, allow_redirects=True)
     except Exception as exc:  # noqa: BLE001
@@ -522,24 +548,6 @@ def media_raw(u: str, r: str = "", request: Request = None):
     if resp.status_code >= 400:
         sess.close()
         raise HTTPException(resp.status_code, f"upstream {resp.status_code}")
-
-    # 小分片整块读入并缓存，避免反复回源
-    if not rng:
-        try:
-            body = resp.content
-        finally:
-            sess.close()
-        if body:
-            segcache.put(url, body)
-        return Response(
-            body,
-            media_type=resp.headers.get("content-type", "application/octet-stream"),
-            headers={
-                "Access-Control-Allow-Origin": "*",
-                "Cache-Control": "public, max-age=86400",
-                "X-Seg-Cache": "miss",
-            },
-        )
 
     out: dict[str, str] = {"Access-Control-Allow-Origin": "*"}
     for k in ("content-type", "content-length", "content-range", "accept-ranges", "etag", "last-modified"):
