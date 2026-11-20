@@ -54,6 +54,11 @@ def _prune() -> None:
 
 
 def _download(seg_url: str, referer: str) -> bytes:
+    from . import segcache
+
+    hit = segcache.get(seg_url)
+    if hit:
+        return hit
     resp = cr.get(
         seg_url,
         impersonate=settings.impersonate,
@@ -66,7 +71,10 @@ def _download(seg_url: str, referer: str) -> bytes:
     )
     if resp.status_code >= 400:
         raise RuntimeError(f"segment {resp.status_code}")
-    return resp.content
+    body = resp.content
+    if body:
+        segcache.put(seg_url, body)  # 播放过的分片也能复用，缩略图不必再下一遍
+    return body
 
 
 def _extract_via_m3u8(seg_data: bytes, key_bytes: bytes, iv_hex: str, seek: float, width: int) -> bytes | None:
