@@ -495,12 +495,14 @@ const P = {
   segs: [],
   media: null,
   item: null,
+  keyUrl: "",
   previewTimer: null,
   lastPreview: "",
 };
 
 async function loadSegments(media) {
   P.segs = [];
+  P.keyUrl = "";
   if (media.kind !== "hls") return;
   try {
     const r = await fetch(apiUrl(media.play));
@@ -512,6 +514,16 @@ async function loadSegments(media) {
     for (const raw of text.split("\n")) {
       const s = raw.trim();
       if (!s) continue;
+      if (s.startsWith("#EXT-X-KEY:")) {
+        const km = /URI="([^"]+)"/.exec(s);
+        if (km && km[1]) {
+          const ku = km[1];
+          const q = ku.includes("?") ? new URLSearchParams(ku.split("?")[1]) : null;
+          // 代理后的 key 地址形如 /api/media/raw?u=<b64>&r=<b64>
+          if (q && q.get("u")) P.keyUrl = { u: q.get("u"), r: q.get("r") || "" };
+        }
+        continue;
+      }
       if (s.startsWith("#EXTINF:")) {
         dur = parseFloat(s.slice(8)) || 4;
         continue;
@@ -642,7 +654,8 @@ function buildControls(shell, video) {
     const seg = findSeg(t);
     if (!seg) return;
     const off = Math.max(0, t - seg.start);
-    const url = `/api/thumb?u=${encodeURIComponent(seg.u)}&t=${off.toFixed(2)}&r=${encodeURIComponent(seg.r)}&w=320`;
+    let url = `/api/thumb?u=${encodeURIComponent(seg.u)}&t=${off.toFixed(2)}&r=${encodeURIComponent(seg.r)}&w=320`;
+    if (P.keyUrl && P.keyUrl.u) url += `&k=${encodeURIComponent(P.keyUrl.u)}`;
     if (url === P.lastPreview) return;
     P.lastPreview = url;
     const img = new Image();

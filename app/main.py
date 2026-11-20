@@ -592,12 +592,12 @@ def api_img(u: str, r: str = "") -> Response:
 
 
 @app.get("/api/thumb")
-def api_thumb(u: str, t: float = 0.0, r: str = "", w: int = 320) -> Response:
-    """进度条预览帧：u = base64 分片地址，t = 片内秒数，r = base64 Referer。"""
+def api_thumb(u: str, t: float = 0.0, r: str = "", w: int = 320, k: str = "") -> Response:
+    """进度条预览帧：u=分片地址，t=片内秒数，r=Referer，k=AES 密钥地址（加密流必填）。"""
     from .thumb import get_thumb
 
     try:
-        body = get_thumb(u, t, r, max(120, min(640, w)))
+        body = get_thumb(u, t, r, max(120, min(640, w)), k)
     except ValueError as exc:
         raise HTTPException(403, str(exc)) from exc
     except Exception as exc:  # noqa: BLE001

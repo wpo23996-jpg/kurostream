@@ -69,14 +69,16 @@ def _download(seg_url: str, referer: str) -> bytes:
     return resp.content
 
 
-def _extract_once(data: bytes, seek: float, width: int) -> bytes | None:
+def _extract_once(data: bytes, seek: float, width: int, key_hex: str = "") -> bytes | None:
     with tempfile.NamedTemporaryFile(suffix=".ts", delete=False) as tmp:
         tmp.write(data)
         tmp_path = tmp.name
     out_path = tmp_path + ".jpg"
     try:
-        cmd = [
-            FFMPEG, "-hide_banner", "-loglevel", "error", "-y",
+        cmd = [FFMPEG, "-hide_banner", "-loglevel", "error", "-y"]
+        if key_hex:
+            cmd += ["-decryption_key", key_hex]
+        cmd += [
             "-ss", f"{max(0.0, seek):.3f}",
             "-i", tmp_path,
             "-frames:v", "1",
@@ -100,23 +102,48 @@ def _extract_once(data: bytes, seek: float, width: int) -> bytes | None:
                 pass
 
 
-def _extract(data: bytes, seek: float, width: int) -> bytes:
+def _extract(data: bytes, seek: float, width: int, key_hex: str = "") -> bytes:
     """先按目标时间截，失败就退回分片开头（末尾几秒经常定位超出）。"""
-    pic = _extract_once(data, seek, width)
+    pic = _extract_once(data, seek, width, key_hex)
     if pic is None and seek > 0.4:
-        pic = _extract_once(data, max(0.0, seek - 1.0), width)
+        pic = _extract_once(data, max(0.0, seek - 1.0), width, key_hex)
     if pic is None and seek > 0.1:
-        pic = _extract_once(data, 0.0, width)
+        pic = _extract_once(data, 0.0, width, key_hex)
     if pic is None:
-        raise RuntimeError("ffmpeg 截帧失败")
+        raise RuntimeError("ffmpeg 截帧失败（可能是加密分片且没给密钥）")
     return pic
 
 
-def get_thumb(seg_u: str, seek: float, referer_u: str = "", width: int = 320) -> bytes:
+def fetch_key(key_url: str, referer: str = "") -> str:
+    """下载 AES-128 密钥，返回 ffmpeg 需要的 hex 字符串。"""
+    resp = cr.get(
+        key_url,
+        impersonate=settings.impersonate,
+        timeout=20,
+        headers={
+            "User-Agent": settings.user_agent,
+            "Referer": referer or key_url,
+            "Accept": "*/*",
+        },
+    )
+    if resp.status_code >= 400:
+        raise RuntimeError(f"key {resp.status_code}")
+    body = resp.content
+    if len(body) < 16:
+        raise RuntimeError(f"key 长度异常 {len(body)}")
+    return body[:16].hex()
+
+
+def get_thumb(seg_u: str, seek: float, referer_u: str = "", width: int = 320,
+              key_u: str = "") -> bytes:
     seg_url = b64d(seg_u)
     referer = b64d(referer_u) if referer_u else ""
     if not host_allowed(seg_url):
         raise ValueError("segment host not allowed")
+
+    key_url = b64d(key_u) if key_u else ""
+    if key_url and not host_allowed(key_url):
+        key_url = ""
 
     cache = _cache_path(seg_url, seek, width)
     if cache.exists() and cache.stat().st_size > 0:
@@ -126,7 +153,13 @@ def get_thumb(seg_u: str, seek: float, referer_u: str = "", width: int = 320) ->
         if cache.exists():  # 等锁期间别人已经生成
             return cache.read_bytes()
         data = _download(seg_url, referer)
-        pic = _extract(data, seek, width)
+        key_hex = ""
+        if key_url:
+            try:
+                key_hex = fetch_key(key_url, referer)
+            except Exception as exc:  # noqa: BLE001
+                log.debug("thumb key fetch failed: %s", exc)
+        pic = _extract(data, seek, width, key_hex)
         try:
             cache.write_bytes(pic)
         except Exception:  # noqa: BLE001
