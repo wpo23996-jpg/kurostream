@@ -11,3 +11,5 @@ android/
 ios/
 *.log
 .DS_Store
+
+_github_pending/
