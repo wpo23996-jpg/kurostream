@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import threading
 import time
 from pathlib import Path
@@ -44,7 +45,15 @@ def _save(data: dict) -> None:
 
 
 def _origin(url: str) -> str:
+    """把深路径收敛到「host + 语言段」，避免 FlareSolverr 卡在重定向链上。
+
+    https://missav.ws/cn/new      -> https://missav.ws/cn
+    https://jable.tv/latest-updates/ -> https://jable.tv/
+    """
     p = urlparse(url)
+    parts = [x for x in p.path.split("/") if x]
+    if parts and re.fullmatch(r"[a-z]{2}(?:-[A-Za-z]+)?", parts[0]):
+        return f"{p.scheme}://{p.netloc}/{parts[0]}"
     return f"{p.scheme}://{p.netloc}/"
 
 
