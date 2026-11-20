@@ -1,14 +1,15 @@
 /* KuroStream service worker
- * 只缓存「应用外壳」，API 与音视频分片一律直连，避免撑爆内存与拿到过期数据。
+ * v1.7.0：静态资源改为「网络优先」，避免更新后浏览器一直跑旧版 app.js。
+ * 只缓存应用外壳，/api/ 一律直连。
  */
-const VERSION = "v1.6.0";
+const VERSION = "v1.7.0";
 const CACHE = `ks-${VERSION}`;
 
 const SHELL = [
   "/",
   "/index.html",
-  "/style.css?v=1.6.0",
-  "/app.js?v=1.6.0",
+  "/style.css?v=1.7.0",
+  "/app.js?v=1.7.0",
   "/vendor/hls.min.js",
   "/manifest.webmanifest",
   "/icons/icon-192.png",
@@ -40,11 +41,8 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
-
-  // 接口、图片代理、媒体分片：全部直连，不碰缓存
   if (url.pathname.startsWith("/api/")) return;
 
-  // 导航请求：网络优先，断网时回退到缓存的外壳
   if (req.mode === "navigate") {
     event.respondWith(
       fetch(req).catch(() => caches.match("/index.html").then((r) => r || caches.match("/")))
@@ -52,19 +50,16 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // 静态资源：先用缓存，同时后台更新
+  // 网络优先：拿到新文件就用新的，离线时才回退到缓存
   event.respondWith(
-    caches.match(req).then((hit) => {
-      const network = fetch(req)
-        .then((res) => {
-          if (res && res.ok) {
-            const copy = res.clone();
-            caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => undefined);
-          }
-          return res;
-        })
-        .catch(() => hit);
-      return hit || network;
-    })
+    fetch(req)
+      .then((res) => {
+        if (res && res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => undefined);
+        }
+        return res;
+      })
+      .catch(() => caches.match(req))
   );
 });
