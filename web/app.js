@@ -670,22 +670,29 @@ function buildControls(shell, video) {
     }
     if (url === P.lastPreview) return;
     P.lastPreview = url;
-    pvImg.style.backgroundImage = "";  // 先清掉旧图，避免错位
     const img = new Image();
     img.onload = () => {
-      if (P.lastPreview === url) pvImg.style.backgroundImage = `url("${apiUrl(url)}")`;
+      if (P.lastPreview === url) {
+        pvImg.style.backgroundImage = `url("${apiUrl(url)}")`;
+        pvImg.classList.add("has");
+      }
     };
     img.onerror = () => {
-      if (P.lastPreview === url) pv.classList.remove("on");
+      console.warn("[kuro] 缩略图失败", url.slice(0, 80));
     };
     img.src = apiUrl(url);
   };
 
   let pvRaf = 0;
+  let pvPending = 0;
   wrap.addEventListener("pointermove", (e) => {
     if (pvRaf) return;
     pvRaf = requestAnimationFrame(() => {
       pvRaf = 0;
+      // hover 时不动就只请求一次，移动时才更新
+      const now = Date.now();
+      if (now - pvPending < 120) return;
+      pvPending = now;
       showPreview(e.clientX);
     });
   });
