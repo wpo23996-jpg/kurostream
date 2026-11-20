@@ -88,9 +88,21 @@ function cardEl(item, opts = {}) {
   if (item.cover_proxy) {
     const img = el("img");
     img.loading = "lazy";
+    img.decoding = "async";
     img.alt = item.title || "";
     img.onload = () => img.classList.add("loaded");
-    img.onerror = () => img.remove();
+    // 失败不要删元素：保留占位块，重试一次，避免整屏只剩文字
+    let retried = false;
+    img.onerror = () => {
+      if (!retried) {
+        retried = true;
+        setTimeout(() => {
+          img.src = apiUrl(item.cover_proxy) + (item.cover_proxy.includes("?") ? "&" : "?") + "_r=" + Date.now();
+        }, 1200);
+      } else {
+        img.classList.add("failed");
+      }
+    };
     img.src = apiUrl(item.cover_proxy);
     thumb.append(img);
   }

@@ -199,6 +199,9 @@ button { font: inherit; }
   opacity: 0; transition: opacity .3s;
 }
 .card .thumb img.loaded { opacity: 1; }
+.card .thumb img.failed {
+  opacity: 1; background: linear-gradient(135deg, #1a1f27, #12161c);
+}
 .card .dur {
   position: absolute; right: 6px; bottom: 6px;
   background: rgba(0, 0, 0, .76); padding: 1px 6px; border-radius: 5px;
