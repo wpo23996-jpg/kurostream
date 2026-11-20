@@ -93,12 +93,15 @@ class AvpleProvider(BaseProvider):
         return SearchResult(items=items, page=page, total_pages=max(pages) if pages else 1)
 
     def browse(self, page: int = 1, sort: str = "new", **kwargs) -> SearchResult:
-        kind = {"new": "/", "trending": "/hot", "chinese": "/chinese"}.get(sort, "/")
-        routes = [kind, "/"] if kind != "/" else ["/"]
+        # 实测：/?page=N 无效（永远同一批），/tags/all/{page}/date 才是真分页
+        if page <= 1:
+            routes = ["/home", "/"]
+        else:
+            routes = [f"/tags/all/{page}/date", "/home"]
         last: Exception | None = None
         for route in routes:
             try:
-                html = self.http.get(f"{self.base}{route}", params={"page": page} if page > 1 else None).text
+                html = self.http.get(f"{self.base}{route}").text
                 items = self._cards(html)
                 if items:
                     return SearchResult(items=items, page=page, total_pages=self.pages_of(html))
