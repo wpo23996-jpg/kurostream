@@ -25,6 +25,8 @@ localStorage.setItem("ks_uid", uid);
 
 /* 店主令牌：填了就不会计入免费额度、不会被限制画质 */
 let ADMIN_TOKEN = localStorage.getItem("ks_admin") || "";
+/* 登录 token */
+let AUTH_TOKEN = localStorage.getItem("ks_token") || "";
 
 const state = {
   channels: [],
@@ -56,6 +58,7 @@ function el(tag, cls, html) {
 async function api(path, opts = {}) {
   const headers = { "X-KS-UID": uid, ...(opts.headers || {}) };
   if (ADMIN_TOKEN) headers["X-Admin-Token"] = ADMIN_TOKEN;
+  if (AUTH_TOKEN) headers["X-KS-Token"] = AUTH_TOKEN;
   const resp = await fetch(apiUrl(path), { ...opts, headers });
   if (!resp.ok) {
     let msg = resp.statusText;
@@ -787,6 +790,85 @@ function bindPlayerKeys(video) {
   state.keyHandlers.push(handler);
 }
 
+/* -------------------------------------------------------------------- auth */
+let authMode = "login";
+
+function openAuth(mode = "login") {
+  authMode = mode;
+  $("#auth").classList.remove("hidden");
+  $("#auth-msg").textContent = "";
+  $("#auth-msg").className = "auth-msg";
+  $("#auth-title").textContent = mode === "login" ? "登录" : "注册";
+  $("#auth-submit").textContent = mode === "login" ? "登录" : "注册并登录";
+  $("#auth-switch-text").textContent = mode === "login" ? "还没有账号？" : "已有账号？";
+  $("#auth-toggle").textContent = mode === "login" ? "立即注册" : "去登录";
+  $("#auth-pass").autocomplete = mode === "login" ? "current-password" : "new-password";
+  setTimeout(() => $("#auth-email").focus(), 60);
+}
+
+async function submitAuth(e) {
+  e.preventDefault();
+  const email = $("#auth-email").value.trim();
+  const password = $("#auth-pass").value;
+  if (!email || password.length < 6) {
+    $("#auth-msg").textContent = "邮箱要正确，密码至少 6 位";
+    return;
+  }
+  const btn = $("#auth-submit");
+  btn.disabled = true;
+  btn.textContent = "请稍候…";
+  try {
+    const r = await api(`/api/${authMode === "login" ? "login" : "register"}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    AUTH_TOKEN = r.token;
+    localStorage.setItem("ks_token", r.token);
+    $("#auth-msg").className = "auth-msg ok";
+    $("#auth-msg").textContent = authMode === "login" ? "登录成功" : "注册成功，已自动登录";
+    await syncMember();
+    setTimeout(() => {
+      $("#auth").classList.add("hidden");
+      router();
+    }, 700);
+  } catch (err) {
+    $("#auth-msg").className = "auth-msg";
+    $("#auth-msg").textContent = err.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = authMode === "login" ? "登录" : "注册并登录";
+  }
+}
+
+async function logout() {
+  try {
+    await api("/api/logout", { method: "POST" });
+  } catch (_) {}
+  AUTH_TOKEN = "";
+  localStorage.removeItem("ks_token");
+  await syncMember();
+  router();
+}
+
+function syncAuthButton(me) {
+  const btn = $("#auth-btn");
+  if (!btn) return;
+  if (me && me.logged_in) {
+    const name = (me.email || "").split("@")[0].slice(0, 12);
+    btn.textContent = name || "我的";
+    btn.classList.add("on");
+    btn.onclick = () => {
+      if (confirm(`已登录：${me.email}\n\n要退出登录吗？`)) logout();
+      else openPricing();
+    };
+  } else {
+    btn.textContent = "登录";
+    btn.classList.remove("on");
+    btn.onclick = () => openAuth("login");
+  }
+}
+
 /* ------------------------------------------------------------------- saved */
 function readSaved() {
   try {
@@ -1058,14 +1140,20 @@ async function syncMember() {
     const me = await api("/api/me");
     state.tier = me.tier;
     state.member = me;
+    syncAuthButton(me);
     if (me.owner) {
       $("#vip-btn").textContent = "店主";
       $("#vip-btn").style.borderColor = "#3ecf8e";
       $("#vip-btn").style.color = "#8ff0c4";
+    } else if (me.active) {
+      $("#vip-btn").textContent = me.label;
+      $("#vip-btn").style.borderColor = "";
+      $("#vip-btn").style.color = "";
     } else {
-      $("#vip-btn").textContent = me.active ? me.label : "会员";
+      $("#vip-btn").textContent = "会员";
+      $("#vip-btn").style.borderColor = "";
+      $("#vip-btn").style.color = "";
     }
-    ADMIN_TOKEN = ADMIN_TOKEN || "";
   } catch (_) {}
 }
 
@@ -1095,6 +1183,15 @@ $("#search-form").addEventListener("submit", (e) => {
   location.hash = `#/s/${encodeURIComponent(q)}`;
 });
 $("#vip-btn").onclick = openPricing;
+$("#auth-close").onclick = () => $("#auth").classList.add("hidden");
+$("#auth").addEventListener("click", (e) => {
+  if (e.target.id === "auth") $("#auth").classList.add("hidden");
+});
+$("#auth-toggle").onclick = (e) => {
+  e.preventDefault();
+  openAuth(authMode === "login" ? "register" : "login");
+};
+$("#auth-form").addEventListener("submit", submitAuth);
 $("#pricing-close").onclick = () => $("#pricing").classList.add("hidden");
 $("#pricing").addEventListener("click", (e) => {
   if (e.target.id === "pricing") $("#pricing").classList.add("hidden");

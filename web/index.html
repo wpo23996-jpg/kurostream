@@ -34,6 +34,7 @@
 
   <nav class="top-actions">
     <a href="#/saved" class="ghost-link">收藏</a>
+    <button id="auth-btn" class="ghost-btn">登录</button>
     <button id="vip-btn" class="vip-btn">会员</button>
   </nav>
 </header>
@@ -80,6 +81,31 @@
 
 <!-- 网页版留空（同源）。iOS / Android 外壳构建时把 apiBase 换成你的域名。 -->
 <script>window.__KS_CONFIG__ = window.__KS_CONFIG__ || { apiBase: "" };</script>
+<!-- 登录 / 注册 -->
+<div id="auth" class="modal hidden">
+  <div class="modal-card auth-card">
+    <button id="auth-close" class="close" aria-label="关闭">×</button>
+    <h2 id="auth-title">登录</h2>
+    <p class="auth-sub" id="auth-sub">登录后可跨设备同步会员与观看记录</p>
+    <form id="auth-form" autocomplete="on">
+      <label class="auth-field">
+        <span>邮箱</span>
+        <input id="auth-email" type="email" placeholder="you@example.com" required autocomplete="username">
+      </label>
+      <label class="auth-field">
+        <span>密码</span>
+        <input id="auth-pass" type="password" placeholder="至少 6 位" required minlength="6" autocomplete="current-password">
+      </label>
+      <button type="submit" class="btn-primary auth-submit" id="auth-submit">登录</button>
+    </form>
+    <p class="auth-switch">
+      <span id="auth-switch-text">还没有账号？</span>
+      <a href="#" id="auth-toggle">立即注册</a>
+    </p>
+    <div id="auth-msg" class="auth-msg"></div>
+  </div>
+</div>
+
 <script src="/vendor/hls.min.js"></script>
 <script src="/app.js?v=1.6.0"></script>
 </body>
