@@ -23,7 +23,7 @@ log = logging.getLogger("kurostream.cf")
 
 ENDPOINT = os.getenv("KS_FLARESOLVERR", "").strip()
 CACHE_FILE = Path(os.getenv("KS_CF_CACHE", "./.cf_sessions.json"))
-TTL = int(os.getenv("KS_CF_TTL", "1500"))
+TTL = int(os.getenv("KS_CF_TTL", "2400"))  # 40 分钟：比站点实际有效期短，留出重建余量
 MAX_TIMEOUT_MS = int(os.getenv("KS_CF_MAX_TIMEOUT", "150000"))
 
 _lock = threading.Lock()

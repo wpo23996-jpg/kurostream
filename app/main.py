@@ -141,6 +141,13 @@ def health() -> dict[str, Any]:
 
 
 @app.on_event("startup")
+WARM_URLS = (
+    "https://missav.ws/cn",
+    "https://jable.tv/",
+    "https://avple.tv/",
+    "https://supjav.com/",
+)
+
 async def _warmup_cloudflare() -> None:
     """后台预热：串行把主要源过一遍挑战，避免首屏卡住、也避免并发压垮 FlareSolverr。"""
     from .cf import solver as cf_solver
@@ -149,8 +156,8 @@ async def _warmup_cloudflare() -> None:
         return
 
     async def warm() -> None:
-        # 只预热最重的两个，其余按需解；FlareSolverr 一次只能跑一个，排队越久越容易超时
-        for url in ("https://missav.ws/cn", "https://jable.tv/"):
+        # 逐个解，FlareSolverr 一次只能跑一个；失败重试一次
+        for url in WARM_URLS:
             for attempt in range(2):
                 try:
                     await asyncio.to_thread(cf_solver.get, url)
@@ -161,7 +168,20 @@ async def _warmup_cloudflare() -> None:
                     await asyncio.sleep(5)
         log.info("cf warmup done, hosts=%s", cf_solver.cached_hosts())
 
+    async def keepalive() -> None:
+        """每 20 分钟刷一遍，避免 cookie 过期后首个用户请求卡 75 秒。"""
+        while True:
+            await asyncio.sleep(1200)
+            for url in WARM_URLS:
+                try:
+                    await asyncio.to_thread(cf_solver.get, url, True)
+                    log.info("cf keepalive: %s", url)
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("cf keepalive %s failed: %s", url, exc)
+                await asyncio.sleep(3)
+
     asyncio.create_task(warm())
+    asyncio.create_task(keepalive())
 
 
 @app.get("/api/providers")
