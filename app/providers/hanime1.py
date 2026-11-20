@@ -79,7 +79,7 @@ class Hanime1Provider(BaseProvider):
                 ).text
                 items = self._cards(html)
                 if items:
-                    return SearchResult(items=items, page=page, total_pages=1)
+                    return SearchResult(items=items, page=page, total_pages=self.pages_of(html))
             except Exception as exc:  # noqa: BLE001
                 last = exc
         if last:

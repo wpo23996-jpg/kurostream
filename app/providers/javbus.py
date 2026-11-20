@@ -80,7 +80,7 @@ class JavbusProvider(BaseProvider):
                 html = self.http.get(f"{self.base}{r}", params={"page": page} if page > 1 else None).text
                 items = self._cards(html)
                 if items:
-                    return SearchResult(items=items, page=page, total_pages=1)
+                    return SearchResult(items=items, page=page, total_pages=self.pages_of(html))
             except Exception as exc:  # noqa: BLE001
                 log.debug("javbus browse %r failed: %s", r, exc)
         return SearchResult(items=[], page=page, total_pages=1)

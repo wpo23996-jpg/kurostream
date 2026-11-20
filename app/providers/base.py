@@ -2,12 +2,35 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import ClassVar
 
 from ..http_client import Http
 from ..schemas import Detail, Item, SearchResult
 
 log = logging.getLogger("kurostream.provider")
+
+PAGE_PATTERNS = (
+    re.compile(r"[?&]page=(\d+)"),
+    re.compile(r"/page/(\d+)/?"),
+    re.compile(r'data-pages="(\d+)"'),
+    re.compile(r'data-max-page="(\d+)"'),
+    re.compile(r"[?&]from=(\d+)"),
+)
+
+
+def parse_last_page(html: str) -> int:
+    """从列表页 HTML 抠出最大页码，抠不到返回 1。"""
+    best = 1
+    for rx in PAGE_PATTERNS:
+        for m in rx.finditer(html or ""):
+            try:
+                n = int(m.group(1))
+            except (ValueError, IndexError):
+                continue
+            if 1 < n < 200000:
+                best = max(best, n)
+    return best
 
 
 class ProviderError(RuntimeError):
@@ -55,6 +78,10 @@ class BaseProvider:
     # ------------------------------------------------------------------ helpers
     def _item(self, **kwargs) -> Item:
         return Item(provider=self.key, **kwargs)
+
+    @staticmethod
+    def pages_of(html: str) -> int:
+        return parse_last_page(html)
 
     @classmethod
     def info(cls) -> dict:

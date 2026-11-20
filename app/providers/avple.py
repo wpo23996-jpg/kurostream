@@ -101,7 +101,7 @@ class AvpleProvider(BaseProvider):
                 html = self.http.get(f"{self.base}{route}", params={"page": page} if page > 1 else None).text
                 items = self._cards(html)
                 if items:
-                    return SearchResult(items=items, page=page, total_pages=1)
+                    return SearchResult(items=items, page=page, total_pages=self.pages_of(html))
             except Exception as exc:  # noqa: BLE001
                 last = exc
         if last:
