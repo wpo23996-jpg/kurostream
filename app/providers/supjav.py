@@ -63,15 +63,17 @@ class SupjavProvider(BaseProvider):
         return SearchResult(items=self._cards(html), page=page, total_pages=1)
 
     def browse(self, page: int = 1, sort: str = "new", **kwargs) -> SearchResult:
-        route = {"new": "/", "trending": "/popular", "chinese": "/censored"}.get(sort, "/")
-        for r in dict.fromkeys([route, "/"]):
+        # 实测：首页 /page/N/ 是死的（永远返回同一批），/popular/page/N/ 才是真分页
+        route = {"new": "/popular", "trending": "/popular", "chinese": "/censored"}.get(sort, "/popular")
+        for r in dict.fromkeys([route, "/popular"]):
+            url = f"{self.base}{r}/" if page <= 1 else f"{self.base}{r}/page/{page}/"
             try:
-                html = self.http.get(f"{self.base}{r}", params={"page": page} if page > 1 else None).text
+                html = self.http.get(url).text
                 items = self._cards(html)
                 if items:
                     return SearchResult(items=items, page=page, total_pages=self.pages_of(html))
             except Exception as exc:  # noqa: BLE001
-                log.debug("supjav browse %r failed: %s", r, exc)
+                log.debug("supjav browse %r failed: %s", url, exc)
         return SearchResult(items=[], page=page, total_pages=1)
 
     def detail(self, vid: str) -> Detail:
