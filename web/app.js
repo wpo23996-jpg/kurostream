@@ -23,6 +23,9 @@ const uid =
   (crypto.randomUUID ? crypto.randomUUID() : "u" + Date.now().toString(36) + Math.random().toString(36).slice(2));
 localStorage.setItem("ks_uid", uid);
 
+/* 店主令牌：填了就不会计入免费额度、不会被限制画质 */
+let ADMIN_TOKEN = localStorage.getItem("ks_admin") || "";
+
 const state = {
   channels: [],
   site: "KuroStream",
@@ -51,10 +54,9 @@ function el(tag, cls, html) {
 }
 
 async function api(path, opts = {}) {
-  const resp = await fetch(apiUrl(path), {
-    ...opts,
-    headers: { "X-KS-UID": uid, ...(opts.headers || {}) },
-  });
+  const headers = { "X-KS-UID": uid, ...(opts.headers || {}) };
+  if (ADMIN_TOKEN) headers["X-Admin-Token"] = ADMIN_TOKEN;
+  const resp = await fetch(apiUrl(path), { ...opts, headers });
   if (!resp.ok) {
     let msg = resp.statusText;
     try {
@@ -854,7 +856,14 @@ async function syncMember() {
     const me = await api("/api/me");
     state.tier = me.tier;
     state.member = me;
-    $("#vip-btn").textContent = me.active ? `${me.label}` : "会员";
+    if (me.owner) {
+      $("#vip-btn").textContent = "店主";
+      $("#vip-btn").style.borderColor = "#3ecf8e";
+      $("#vip-btn").style.color = "#8ff0c4";
+    } else {
+      $("#vip-btn").textContent = me.active ? me.label : "会员";
+    }
+    ADMIN_TOKEN = ADMIN_TOKEN || "";
   } catch (_) {}
 }
 
@@ -907,7 +916,7 @@ document.addEventListener("keydown", (e) => {
 
 window.addEventListener("hashchange", router);
 
-/* 连点 logo 5 次 → 现场改服务器地址（装到手机后不用重新打包） */
+/* 连点 logo 5 次 → 改服务器地址 / 填店主令牌（装到手机后不用重新打包） */
 (() => {
   const logo = $(".logo");
   if (!logo) return;
@@ -920,16 +929,21 @@ window.addEventListener("hashchange", router);
     if (taps < 5) return;
     taps = 0;
     e.preventDefault();
+
     const current = API_BASE || location.origin;
-    const input = prompt(
-      "服务器地址（留空 = 使用当前站点）\n例如 https://kuro.example.com",
-      current
-    );
+    const input = prompt("服务器地址（留空 = 使用当前站点）\n例如 https://kuro.example.com", current);
     if (input === null) return;
     const val = input.trim().replace(/\/+$/, "");
     if (val) localStorage.setItem("ks_api_base", val);
     else localStorage.removeItem("ks_api_base");
-    alert(val ? `已保存：${val}\n即将刷新` : "已恢复默认，即将刷新");
+
+    const token = prompt("店主令牌（留空 = 普通访客）\n填了不限额度、全画质", ADMIN_TOKEN);
+    if (token !== null) {
+      const t = token.trim();
+      if (t) localStorage.setItem("ks_admin", t);
+      else localStorage.removeItem("ks_admin");
+    }
+    alert("已保存，即将刷新");
     location.reload();
   });
 })();

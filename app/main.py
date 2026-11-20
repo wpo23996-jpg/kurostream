@@ -257,13 +257,15 @@ async def api_detail(provider: str, id: str, request: Request, preview_tier: str
     uid = uid_of(request)
     member = store.member(uid)
 
+    owner = _is_owner(request)
+
     # membership is decided server-side only
-    tier_key = member.tier if member.active else "free"
+    tier_key = "lifetime" if owner else (member.tier if member.active else "free")
     if DEV_MODE and preview_tier:
         tier_key = membership.get(preview_tier)["key"]
 
     quota = None
-    if tier_key == "free":
+    if tier_key == "free" and not owner:
         allowed, used = store.bump_usage(uid, orders.FREE_DAILY)
         if not allowed:
             raise HTTPException(
@@ -303,6 +305,7 @@ async def api_detail(provider: str, id: str, request: Request, preview_tier: str
     payload["tier"] = tier_key
     payload["max_height"] = membership.max_height(tier_key)
     payload["member"] = member.to_dict()
+    payload["owner"] = owner
     payload["quota"] = quota
     payload["meta"] = {
         k: v
@@ -318,9 +321,14 @@ def api_me(request: Request) -> dict[str, Any]:
     store = orders.Store.get()
     uid = uid_of(request)
     member = store.member(uid)
+    owner = _is_owner(request)
     return {
         "uid": uid,
-        **member.to_dict(),
+        **(member.to_dict() if not owner else {
+            "uid": uid, "tier": "lifetime", "label": "店主", "expires_at": 0,
+            "expires_text": "永久", "active": True,
+        }),
+        "owner": owner,
         "quota": {"used": store.usage_today(uid), "limit": orders.FREE_DAILY},
         "orders": store.orders_of(uid, 5),
     }
@@ -376,6 +384,11 @@ def api_claim_order(no: str, request: Request) -> dict[str, Any]:
 
 def _is_admin(request: Request | None) -> bool:
     return bool(ADMIN_TOKEN) and request is not None and request.headers.get("x-admin-token", "") == ADMIN_TOKEN
+
+
+def _is_owner(request: Request | None) -> bool:
+    """站主请求：带正确管理令牌的访客，等同终身会员、不计额度、不过滤画质。"""
+    return _is_admin(request)
 
 
 @app.post("/api/admin/order/{no}/confirm")
