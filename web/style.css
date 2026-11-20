@@ -501,21 +501,54 @@ button { font: inherit; }
 /* ---------------------------------------------------------------- responsive */
 @media (max-width: 760px) {
   :root { --topbar-h: 54px; --chips-h: 42px; }
-  .topbar { padding: 0 10px; gap: 8px; }
+  .topbar { padding: 0 10px; gap: 6px; }
   .logo { font-size: 14px; gap: 6px; }
   .logo .dot { width: 7px; height: 7px; }
   .ghost-link { display: none; }
   .search { padding: 0 2px 0 11px; }
   .search input { font-size: 13px; }
   .search button { width: 28px; height: 28px; }
-  .vip-btn { padding: 6px 11px; font-size: 11.5px; }
+  .top-actions { gap: 5px; }
+  .vip-btn { padding: 6px 10px; font-size: 11px; }
+  .ghost-btn { padding: 6px 10px; font-size: 11px; }
+
   .chips, .row-head, .section, .grid, .row-track, .detail, .page-head, .toolbar { padding-left: 12px; padding-right: 12px; }
-  .row-track .card { width: 44vw; }
-  .grid { grid-template-columns: repeat(auto-fill, minmax(44vw, 1fr)); gap: 10px; }
-  .info h1 { font-size: 16px; }
+  .row-track { gap: 9px; }
+  .row-track .card { width: 42vw; }
+  .grid { grid-template-columns: repeat(auto-fill, minmax(42vw, 1fr)); gap: 10px; }
+  .row-title { font-size: 14px; }
+
+  /* 播放器：小屏收紧控制栏 */
+  .player-shell { margin-top: 10px; border-radius: 8px; }
+  .ctrl-bar { gap: 5px; padding: 20px 7px 7px; }
+  .c-btn { width: 28px; height: 28px; font-size: 12px; border-radius: 6px; }
+  .ptime { font-size: 10px; letter-spacing: 0; }
+  .progress-wrap { height: 28px; }
+  .preview { width: 132px; bottom: 32px; }
+  .pv-img { width: 132px; border-radius: 6px; }
+  .pv-time { font-size: 10px; }
+
+  /* 详情信息 */
+  .info { margin-top: 12px; }
+  .info h1 { font-size: 15.5px; line-height: 1.45; }
+  .info-meta { gap: 6px 14px; font-size: 11.5px; margin-bottom: 10px; }
+  .tag-row { gap: 5px; margin-bottom: 10px; }
+  .tag { font-size: 10.5px; padding: 1px 7px; }
+  .desc { font-size: 12.5px; line-height: 1.7; }
+  .quality-row { gap: 6px; }
+  .qbtn { padding: 5px 10px; font-size: 11.5px; }
+  .qhint { font-size: 10.5px; }
+
   .modal { padding: 2vh 8px; }
   .modal-card { padding: 16px; border-radius: 12px; }
+  .auth-card { width: 100%; }
   .footer-inner { padding: 20px 12px 28px; }
+}
+
+@media (max-width: 400px) {
+  .logo #site-name { display: none; }
+  .row-track .card { width: 58vw; }
+  .grid { grid-template-columns: repeat(auto-fill, minmax(58vw, 1fr)); }
 }
 
 @media (prefers-reduced-motion: reduce) {

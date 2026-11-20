@@ -12,6 +12,7 @@ CATALOGUE: dict[str, tuple[str, str, str]] = {
     "jable": ("jp-select", "日本精选", "编辑精选合辑，画质稳定"),
     "avple": ("asia", "亚洲综合", "亚洲地区综合片库"),
     "hanime1": ("anime", "动画专区", "动画 / 里番专线"),
+    "huangguo": ("ai-short", "AI短剧", "AI 成人短剧、漫剧与换脸改编"),
     "eporner": ("western", "欧美专区", "欧美高清资源"),
     "javbus": ("archive", "影片资料", "影片资料与下载索引"),
     "javdb": ("rating", "评分榜单", "评分、榜单与口碑数据"),

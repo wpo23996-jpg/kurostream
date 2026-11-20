@@ -7,6 +7,7 @@ from .base import BaseProvider, ProviderError
 from .avple import AvpleProvider
 from .eporner import EpornerProvider
 from .hanime1 import Hanime1Provider
+from .huangguo import HuangguoProvider
 from .jable import JableProvider
 from .javbus import JavbusProvider
 from .javdb import JavdbProvider
@@ -20,6 +21,7 @@ CLASSES = (
     JableProvider,
     AvpleProvider,
     Hanime1Provider,
+    HuangguoProvider,
     EpornerProvider,
     JavbusProvider,
     JavdbProvider,
