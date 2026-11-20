@@ -1,11 +1,10 @@
 """Cloudflare 挑战破解：FlareSolverr 解一次 → 缓存 cookie → curl_cffi 秒级复用。
 
-原理：
-  FlareSolverr 用真实 Chromium 过掉 JS/managed challenge，吐出 cf_clearance +
-  它自己的 User-Agent。cf_clearance 绑定「IP + UA」，所以后续请求必须带同一套
-  cookie 和 UA，用 curl_cffi 发（TLS 指纹够像就过）。
-
-缓存落盘，重启服务不用重解。
+要点：
+  * cf_clearance 绑定「IP + UA」，解完必须用同一套 cookie + UA 发请求
+  * FlareSolverr 单实例只能串行处理，必须加跨进程锁，否则多 worker 会把它堵死
+  * 按 host 解（https://host/），不要用深层路径，cookie 对所有路径生效
+  * 缓存落盘，重启不用重解
 """
 from __future__ import annotations
 
@@ -23,7 +22,8 @@ log = logging.getLogger("kurostream.cf")
 
 ENDPOINT = os.getenv("KS_FLARESOLVERR", "").strip()
 CACHE_FILE = Path(os.getenv("KS_CF_CACHE", "./.cf_sessions.json"))
-TTL = int(os.getenv("KS_CF_TTL", "1800"))
+TTL = int(os.getenv("KS_CF_TTL", "1500"))
+MAX_TIMEOUT_MS = int(os.getenv("KS_CF_MAX_TIMEOUT", "60000"))
 
 _lock = threading.Lock()
 
@@ -43,6 +43,11 @@ def _save(data: dict) -> None:
         log.debug("cache write failed: %s", exc)
 
 
+def _origin(url: str) -> str:
+    p = urlparse(url)
+    return f"{p.scheme}://{p.netloc}/"
+
+
 class Solver:
     def __init__(self, endpoint: str = ENDPOINT, ttl: int = TTL) -> None:
         self.endpoint = endpoint
@@ -51,7 +56,6 @@ class Solver:
 
     # ------------------------------------------------------------------ public
     def get(self, url: str, force: bool = False) -> tuple[dict[str, str], str] | None:
-        """Return (cookies, user_agent) for the URL's host, solving if needed."""
         if not self.enabled:
             return None
         host = urlparse(url).hostname or ""
@@ -64,7 +68,7 @@ class Solver:
             if hit and hit.get("ts", 0) + self.ttl > time.time():
                 return hit.get("cookies", {}), hit.get("ua", "")
 
-        cookies, ua = self._solve(url)
+        cookies, ua = self._solve(_origin(url))
         with _lock:
             data = _load()
             data[host] = {"cookies": cookies, "ua": ua, "ts": time.time()}
@@ -79,31 +83,53 @@ class Solver:
                 data.pop(host)
                 _save(data)
 
+    def cached_hosts(self) -> list[str]:
+        return list(_load().keys())
+
     # ----------------------------------------------------------------- private
     def _solve(self, url: str) -> tuple[dict[str, str], str]:
-        log.info("cloudflare: solving challenge for %s", url)
-        t0 = time.time()
-        r = cr.post(
-            self.endpoint,
-            json={"cmd": "request.get", "url": url, "maxTimeout": 90000},
-            timeout=150,
-        )
+        # 跨进程串行：FlareSolverr 一次只能跑一个浏览器会话
+        lock_path = CACHE_FILE.with_suffix(".lock")
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lf = open(lock_path, "w")
         try:
-            data = r.json()
-        except Exception as exc:  # noqa: BLE001
-            raise RuntimeError(f"flaresolverr 返回非 JSON: {r.status_code}") from exc
+            try:
+                import fcntl
 
-        if data.get("status") != "ok":
-            raise RuntimeError(f"flaresolverr: {data.get('message', 'unknown')}")
+                fcntl.flock(lf.fileno(), fcntl.LOCK_EX)
+            except Exception:  # noqa: BLE001  (Windows 本地调试时没有 fcntl)
+                pass
 
-        sol = data.get("solution") or {}
-        cookies = {c["name"]: c["value"] for c in sol.get("cookies", [])}
-        ua = sol.get("userAgent", "")
-        log.info(
-            "cloudflare: solved %s in %.1fs, cookies=%s",
-            url, time.time() - t0, list(cookies),
-        )
-        return cookies, ua
+            log.info("cloudflare: solving %s", url)
+            t0 = time.time()
+            r = cr.post(
+                self.endpoint,
+                json={"cmd": "request.get", "url": url, "maxTimeout": MAX_TIMEOUT_MS},
+                timeout=MAX_TIMEOUT_MS / 1000 + 60,
+            )
+            try:
+                data = r.json()
+            except Exception as exc:  # noqa: BLE001
+                raise RuntimeError(f"flaresolverr 返回非 JSON: {r.status_code}") from exc
+
+            if data.get("status") != "ok":
+                raise RuntimeError(f"flaresolverr: {data.get('message', 'unknown')}")
+
+            sol = data.get("solution") or {}
+            cookies = {c["name"]: c["value"] for c in sol.get("cookies", [])}
+            ua = sol.get("userAgent", "")
+            if "cf_clearance" not in cookies:
+                raise RuntimeError("flaresolverr 没拿到 cf_clearance")
+            log.info(
+                "cloudflare: solved %s in %.1fs (clearance=%s…)",
+                url, time.time() - t0, cookies["cf_clearance"][:12],
+            )
+            return cookies, ua
+        finally:
+            try:
+                lf.close()
+            except Exception:  # noqa: BLE001
+                pass
 
 
 solver = Solver()

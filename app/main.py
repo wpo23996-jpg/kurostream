@@ -137,19 +137,20 @@ def health() -> dict[str, Any]:
 
 @app.on_event("startup")
 async def _warmup_cloudflare() -> None:
-    """后台预热：先把最主要的两个源过了 CF 挑战，避免首屏卡 80 秒。"""
+    """后台预热：串行把主要源过一遍挑战，避免首屏卡住、也避免并发压垮 FlareSolverr。"""
     from .cf import solver as cf_solver
 
     if not cf_solver.enabled:
         return
 
     async def warm() -> None:
-        for url in ("https://missav.ws/cn", "https://jable.tv/", "https://avple.tv/"):
+        for url in ("https://missav.ws/", "https://jable.tv/", "https://avple.tv/", "https://supjav.com/"):
             try:
                 await asyncio.to_thread(cf_solver.get, url)
                 log.info("cf warmup ok: %s", url)
             except Exception as exc:  # noqa: BLE001
                 log.warning("cf warmup failed %s: %s", url, exc)
+        log.info("cf warmup done, hosts=%s", cf_solver.cached_hosts())
 
     asyncio.create_task(warm())
 
