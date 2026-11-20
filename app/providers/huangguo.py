@@ -83,10 +83,23 @@ class HuangguoProvider(BaseProvider):
                 continue
             seen.add(vid)
             img = a.select_one("img")
+            if img is None and a.parent is not None:
+                # 列表卡片里图片常是 <a> 的兄弟节点
+                img = a.parent.select_one("img")
             cover = ""
             if img is not None:
-                cover = img.get("data-src") or img.get("data-original") or img.get("src") or ""
-                if cover.startswith("/"):
+                cover = (
+                    img.get("data-src")
+                    or img.get("data-original")
+                    or img.get("data-lazy-src")
+                    or img.get("src")
+                    or ""
+                )
+                if cover.startswith("data:"):
+                    cover = ""
+                if cover.startswith("//"):
+                    cover = "https:" + cover
+                elif cover.startswith("/"):
                     cover = BASE + cover
             out.append(
                 Item(

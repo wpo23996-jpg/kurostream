@@ -41,17 +41,32 @@ class SupjavProvider(BaseProvider):
             pid = m.group(1)
             if pid in seen:
                 continue
-            img = a.select_one("img")
+            img = a.select_one("img") or (a.parent.select_one("img") if a.parent is not None else None)
             if img is None and a.select_one("h2,h3,p") is None:
                 continue
             seen.add(pid)
             title_node = a.select_one("h2, h3, p")
+            cover = ""
+            if img is not None:
+                cover = (
+                    img.get("data-original")
+                    or img.get("data-src")
+                    or img.get("data-lazy-src")
+                    or img.get("src")
+                    or ""
+                )
+                if cover.startswith("data:"):
+                    cover = ""
+                if cover.startswith("//"):
+                    cover = "https:" + cover
+                elif cover.startswith("/"):
+                    cover = "https://supjav.com" + cover
             out.append(
                 Item(
                     provider=self.key,
                     id=pid,
                     title=(img.get("alt") if img and img.get("alt") else (title_node.get_text(" ", strip=True) if title_node else pid)),
-                    cover=(img.get("src", "") if img else ""),
+                    cover=cover,
                     url=href,
                 )
             )

@@ -93,7 +93,17 @@ class DeepfakeProvider(BaseProvider):
             if not slug or slug in SLUG_SKIP:
                 continue
             title = re.sub(r"\s+", " ", tm.group(1)).strip() if tm else slug.replace("-", " ")
-            out.append(Item(provider=self.key, id=slug, title=title, url=url))
+            cover = ""
+            for pat in (
+                r'<enclosure[^>]+url="([^"]+)"',
+                r'<media:content[^>]+url="([^"]+)"',
+                r'<media:thumbnail[^>]+url="([^"]+)"',
+            ):
+                cm = re.search(pat, block, re.I)
+                if cm:
+                    cover = cm.group(1).replace("&amp;", "&")
+                    break
+            out.append(Item(provider=self.key, id=slug, title=title, cover=cover, url=url))
         return out
 
     def _cards_from_html(self, html: str) -> list[Item]:
