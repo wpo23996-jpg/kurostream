@@ -81,7 +81,14 @@ class HuangguoProvider(BaseProvider):
             if vid in seen:
                 continue
             seen.add(vid)
-            links.append((vid, a.get_text(" ", strip=True)))
+            title = a.get_text(" ", strip=True)
+            if title.startswith("立即播放"):
+                bm = re.search(r"《(.+?)》", title)
+                if bm:
+                    title = bm.group(1)
+                else:
+                    title = ""
+            links.append((vid, title))
 
         if not links:
             return []
