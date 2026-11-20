@@ -144,12 +144,16 @@ async def _warmup_cloudflare() -> None:
         return
 
     async def warm() -> None:
-        for url in ("https://missav.ws/", "https://jable.tv/", "https://avple.tv/", "https://supjav.com/"):
-            try:
-                await asyncio.to_thread(cf_solver.get, url)
-                log.info("cf warmup ok: %s", url)
-            except Exception as exc:  # noqa: BLE001
-                log.warning("cf warmup failed %s: %s", url, exc)
+        # 只预热最重的两个，其余按需解；FlareSolverr 一次只能跑一个，排队越久越容易超时
+        for url in ("https://missav.ws/cn", "https://jable.tv/"):
+            for attempt in range(2):
+                try:
+                    await asyncio.to_thread(cf_solver.get, url)
+                    log.info("cf warmup ok: %s", url)
+                    break
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("cf warmup %s failed (try %d): %s", url, attempt + 1, exc)
+                    await asyncio.sleep(5)
         log.info("cf warmup done, hosts=%s", cf_solver.cached_hosts())
 
     asyncio.create_task(warm())

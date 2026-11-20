@@ -24,7 +24,7 @@ log = logging.getLogger("kurostream.cf")
 ENDPOINT = os.getenv("KS_FLARESOLVERR", "").strip()
 CACHE_FILE = Path(os.getenv("KS_CF_CACHE", "./.cf_sessions.json"))
 TTL = int(os.getenv("KS_CF_TTL", "1500"))
-MAX_TIMEOUT_MS = int(os.getenv("KS_CF_MAX_TIMEOUT", "60000"))
+MAX_TIMEOUT_MS = int(os.getenv("KS_CF_MAX_TIMEOUT", "150000"))
 
 _lock = threading.Lock()
 
@@ -114,7 +114,7 @@ class Solver:
             r = cr.post(
                 self.endpoint,
                 json={"cmd": "request.get", "url": url, "maxTimeout": MAX_TIMEOUT_MS},
-                timeout=MAX_TIMEOUT_MS / 1000 + 60,
+                timeout=MAX_TIMEOUT_MS / 1000 + 90,
             )
             try:
                 data = r.json()
