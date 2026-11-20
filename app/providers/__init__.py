@@ -5,6 +5,7 @@ import logging
 
 from .base import BaseProvider, ProviderError
 from .avple import AvpleProvider
+from .deepfake import DeepfakeProvider
 from .eporner import EpornerProvider
 from .hanime1 import Hanime1Provider
 from .huangguo import HuangguoProvider
@@ -22,6 +23,7 @@ CLASSES = (
     AvpleProvider,
     Hanime1Provider,
     HuangguoProvider,
+    DeepfakeProvider,
     EpornerProvider,
     JavbusProvider,
     JavdbProvider,

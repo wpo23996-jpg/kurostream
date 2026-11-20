@@ -13,6 +13,7 @@ CATALOGUE: dict[str, tuple[str, str, str]] = {
     "avple": ("asia", "亚洲综合", "亚洲地区综合片库"),
     "hanime1": ("anime", "动画专区", "动画 / 里番专线"),
     "huangguo": ("ai-short", "AI短剧", "AI 成人短剧、漫剧与换脸改编"),
+    "deepfake": ("ai-face", "AI换脸", "亚洲明星 AI 换脸，直连 mp4 可拖动"),
     "eporner": ("western", "欧美专区", "欧美高清资源"),
     "javbus": ("archive", "影片资料", "影片资料与下载索引"),
     "javdb": ("rating", "评分榜单", "评分、榜单与口碑数据"),
