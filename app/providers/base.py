@@ -18,18 +18,47 @@ PAGE_PATTERNS = (
     re.compile(r"[?&]from=(\d+)"),
 )
 
+# 分页块内单独解析（避免把正文里的 /123/ 当成页码）
+PAGINATION_BLOCK = re.compile(
+    r'<(?:ul|div|nav)[^>]*class="[^"]*(?:pagination|pager|page-nav|paging)[^"]*"[^>]*>(.*?)</(?:ul|div|nav)>',
+    re.S | re.I,
+)
+PAGE_LINK_IN_BLOCK = re.compile(r'href="[^"]*?/(\d+)/?["\']|class="[^"]*page-link[^"]*"[^>]*>\s*(\d+)\s*<')
+LAST_PAGE_TEXT = re.compile(r'(?:共|of|/)\s*(\d{1,5})\s*(?:页|pages?)', re.I)
+
 
 def parse_last_page(html: str) -> int:
     """从列表页 HTML 抠出最大页码，抠不到返回 1。"""
+    if not html:
+        return 1
     best = 1
     for rx in PAGE_PATTERNS:
-        for m in rx.finditer(html or ""):
+        for m in rx.finditer(html):
             try:
                 n = int(m.group(1))
             except (ValueError, IndexError):
                 continue
             if 1 < n < 200000:
                 best = max(best, n)
+
+    # 分页块内找数字（jable 这类 /latest-updates/2/ 写法）
+    for blk in PAGINATION_BLOCK.finditer(html):
+        for m in PAGE_LINK_IN_BLOCK.finditer(blk.group(1)):
+            raw = m.group(1) or m.group(2)
+            try:
+                n = int(raw)
+            except (TypeError, ValueError):
+                continue
+            if 1 < n < 200000:
+                best = max(best, n)
+
+    for m in LAST_PAGE_TEXT.finditer(html):
+        try:
+            n = int(m.group(1))
+        except (ValueError, IndexError):
+            continue
+        if 1 < n < 200000:
+            best = max(best, n)
     return best
 
 

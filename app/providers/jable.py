@@ -7,7 +7,7 @@ import re
 from bs4 import BeautifulSoup
 
 from ..schemas import Detail, Item, Media, SearchResult
-from .base import BaseProvider, ProviderError
+from .base import BaseProvider, ProviderError, parse_last_page
 
 log = logging.getLogger("javhub.jable")
 
@@ -58,8 +58,7 @@ class JableProvider(BaseProvider):
                     duration=dur.get_text(strip=True) if dur else "",
                 )
             )
-        pages = [int(n) for n in re.findall(r"[?&]page=(\d+)", html)]
-        return items, max(pages) if pages else 1
+        return items, parse_last_page(html)
 
     # --------------------------------------------------------------- operations
     def search(self, query: str, page: int = 1) -> SearchResult:
