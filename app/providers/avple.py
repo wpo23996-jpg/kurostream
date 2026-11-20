@@ -104,7 +104,8 @@ class AvpleProvider(BaseProvider):
                 html = self.http.get(f"{self.base}{route}").text
                 items = self._cards(html)
                 if items:
-                    return SearchResult(items=items, page=page, total_pages=self.pages_of(html))
+                    # 分页块里没有总页数，实测能一直翻到没内容，所以不设上限
+                    return SearchResult(items=items, page=page, total_pages=99999)
             except Exception as exc:  # noqa: BLE001
                 last = exc
         if last:
