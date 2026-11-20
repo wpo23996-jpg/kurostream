@@ -34,6 +34,7 @@ const state = {
   tagline: "高清片库 · 极速播放",
   tier: "free",
   member: null,
+  sort: "new",
   players: [],
   keyHandlers: [],
   reqToken: 0,
