@@ -1,0 +1,25 @@
+{
+  "name": "kurostream-mobile",
+  "version": "1.6.0",
+  "private": true,
+  "description": "KuroStream iOS / Android 外壳（Capacitor）",
+  "scripts": {
+    "sync:web": "node scripts/sync-web.js",
+    "add:android": "npx cap add android",
+    "add:ios": "npx cap add ios",
+    "open:android": "npx cap open android",
+    "open:ios": "npx cap open ios",
+    "sync": "npm run sync:web && npx cap sync",
+    "build:android": "npm run sync && cd android && ./gradlew assembleDebug"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.2.0",
+    "@capacitor/core": "^6.2.0",
+    "@capacitor/ios": "^6.2.0",
+    "@capacitor/splash-screen": "^6.0.2",
+    "@capacitor/status-bar": "^6.0.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.2.0"
+  }
+}

@@ -1,0 +1,25 @@
+[Unit]
+Description=KuroStream media platform
+Documentation=file:/opt/kurostream/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=kurostream
+Group=kurostream
+WorkingDirectory=/opt/kurostream
+EnvironmentFile=-/etc/kurostream/env
+ExecStart=/opt/kurostream/venv/bin/python run.py
+Restart=always
+RestartSec=3
+KillSignal=SIGINT
+TimeoutStopSec=20
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/kurostream
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>KuroStream · 高清片库</title>
+<meta name="description" content="KuroStream 高清片库，在线播放、收藏与追更。">
+<meta property="og:title" content="KuroStream · 高清片库">
+<meta property="og:description" content="高清影视聚合，原生播放器，秒开不卡。">
+<meta name="theme-color" content="#0b0d10">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="KuroStream">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="icon" href="/icons/favicon-32.png" sizes="32x32">
+<link rel="stylesheet" href="/style.css?v=1.6.0">
+</head>
+<body>
+
+<header class="topbar">
+  <a class="logo" href="#/">
+    <span class="dot"></span>
+    <span id="site-name">KuroStream</span>
+  </a>
+
+  <form id="search-form" class="search" role="search">
+    <input id="q" type="search" placeholder="搜索片名 / 番号 / 演员" autocomplete="off" enterkeyhint="search">
+    <button type="submit" aria-label="搜索">
+      <svg viewBox="0 0 24 24" width="17" height="17"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14"/></svg>
+    </button>
+  </form>
+
+  <nav class="top-actions">
+    <a href="#/saved" class="ghost-link">收藏</a>
+    <button id="vip-btn" class="vip-btn">会员</button>
+  </nav>
+</header>
+
+<nav id="channels" class="chips" aria-label="频道"></nav>
+
+<main id="app" class="app"><div class="skeleton-page"></div></main>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <div class="footer-brand">
+      <strong id="footer-name">KuroStream</strong>
+      <span id="footer-tagline">高清片库 · 极速播放</span>
+    </div>
+    <div class="footer-links">
+      <a href="#/terms">用户协议</a>
+      <a href="#/privacy">隐私政策</a>
+      <a href="#/about">关于我们</a>
+    </div>
+    <p class="footer-note">本站内容由第三方提供索引，仅面向年满 18 周岁的成年人。</p>
+  </div>
+</footer>
+
+<!-- 定价 -->
+<div id="pricing" class="modal hidden">
+  <div class="modal-card pricing-card">
+    <button id="pricing-close" class="close" aria-label="关闭">×</button>
+    <h2 class="pricing-title">开通会员</h2>
+    <p class="pricing-sub" id="pricing-sub">加载中…</p>
+    <div id="plan-grid" class="plan-grid"></div>
+    <table id="feature-table" class="feature-table"></table>
+    <p class="pricing-note">老用户续费永久保留原价 · 7 天内未观看超过 3 部可申请退款</p>
+  </div>
+</div>
+
+<!-- 订单 -->
+<div id="order" class="modal hidden">
+  <div class="modal-card order-card">
+    <button id="order-close" class="close" aria-label="关闭">×</button>
+    <h2 id="order-title">确认订单</h2>
+    <div id="order-body"></div>
+  </div>
+</div>
+
+<!-- 网页版留空（同源）。iOS / Android 外壳构建时把 apiBase 换成你的域名。 -->
+<script>window.__KS_CONFIG__ = window.__KS_CONFIG__ || { apiBase: "" };</script>
+<script src="/vendor/hls.min.js"></script>
+<script src="/app.js?v=1.6.0"></script>
+</body>
+</html>

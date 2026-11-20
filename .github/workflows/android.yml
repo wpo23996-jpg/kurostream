@@ -1,0 +1,84 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      server_url:
+        description: '服务器地址（必须 https，例如 https://kuro.example.com）'
+        required: true
+        type: string
+      app_name:
+        description: '应用显示名'
+        required: false
+        default: 'KuroStream'
+        type: string
+
+jobs:
+  build:
+    name: 云构建 APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: mobile/package.json
+
+      - name: 安装 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: 安装 Android SDK 组件
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platform-tools" "platforms;android-34" "build-tools;34.0.0" > /dev/null 2>&1 || true
+
+      - name: 生成 www（注入服务器地址）
+        working-directory: mobile
+        env:
+          KS_SERVER: ${{ inputs.server_url }}
+        run: |
+          npm install --no-audit --no-fund
+          npm run sync:web
+
+      - name: 生成并同步 Android 工程
+        working-directory: mobile
+        run: |
+          npx cap add android || echo "android 工程已存在，跳过"
+          npx cap sync android
+
+      - name: 格式化应用名
+        working-directory: mobile/android
+        run: |
+          if [ -n "${{ inputs.app_name }}" ]; then
+            sed -i 's|<string name="app_name">.*</string>|<string name="app_name">${{ inputs.app_name }}</string>|' \
+              app/src/main/res/values/strings.xml || true
+          fi
+
+      - name: Gradle 构建 debug APK
+        working-directory: mobile/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: 上传 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: kurostream-android-${{ github.run_number }}
+          path: mobile/android/app/build/outputs/apk/debug/*.apk
+          retention-days: 30
+
+      - name: 构建结果
+        run: |
+          echo "### ✅ APK 构建完成" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "在本次 Actions 运行页底部 **Artifacts** 里下载 `app-debug.apk`" >> $GITHUB_STEP_SUMMARY
+          ls -lh mobile/android/app/build/outputs/apk/debug/ >> $GITHUB_STEP_SUMMARY

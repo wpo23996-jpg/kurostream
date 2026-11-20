@@ -1,0 +1,105 @@
+# Codemagic 构建配置
+# 用法：
+#   1. codemagic.io 用 GitHub 账号登录
+#   2. Add application → 选仓库 → 构建配置选 "Use codemagic.yaml"
+#   3. Environment variables 里填 KS_SERVER = https://你的域名.com
+#   4. Teams → Integrations → Developer Portal 绑 Apple ID（免费账号也行）
+#   5. Start new build
+
+workflows:
+  # ============================================================ Android APK
+  android-debug:
+    name: Android APK
+    max_build_duration: 30
+    instance_type: linux_x2
+    environment:
+      node: 20
+      java: 17
+      vars:
+        KS_SERVER: https://your-domain.com   # ← 改成你的域名
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+    scripts:
+      - name: 安装依赖并生成 www
+        script: |
+          cd mobile
+          npm install --no-audit --no-fund
+          KS_SERVER="$KS_SERVER" npm run sync:web
+      - name: 生成 Android 工程
+        script: |
+          cd mobile
+          npx cap add android || echo "android 工程已存在"
+          npx cap sync android
+      - name: Gradle 构建
+        script: |
+          cd mobile/android
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+    artifacts:
+      - mobile/android/app/build/outputs/apk/debug/*.apk
+    publishing:
+      email:
+        recipients:
+          - your@email.com    # ← 改成你的邮箱
+        notify:
+          success: true
+          failure: true
+
+  # ============================================================ iOS IPA
+  # 前置：Teams → Integrations → Developer Portal 绑 Apple ID
+  #   免费 Apple ID：只能出 development 签名（7 天有效期，Sideloadly 安装）
+  # 付费账号（$99/年）：把 distribution_type 改成 app_store 即可上架
+  ios-ipa:
+    name: iOS IPA
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      node: 20
+      xcode: latest
+      cocoapods: default
+      ios_signing:
+        distribution_type: development      # app_store / ad_hoc / development
+        bundle_identifier: com.kurostream.app   # ← 改成你的 Bundle ID
+      vars:
+        KS_SERVER: https://your-domain.com  # ← 改成你的域名
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+    scripts:
+      - name: 安装依赖并生成 www
+        script: |
+          cd mobile
+          npm install --no-audit --no-fund
+          KS_SERVER="$KS_SERVER" npm run sync:web
+      - name: 生成并同步 iOS 工程
+        script: |
+          cd mobile
+          npx cap add ios || echo "ios 工程已存在"
+          npx cap sync ios
+      - name: 应用签名 profile
+        script: |
+          cd mobile/ios/App
+          xcode-project use-profiles
+      - name: 构建 ipa
+        script: |
+          cd mobile/ios/App
+          xcode-project build-ipa \
+            --workspace "App.xcworkspace" \
+            --scheme "App"
+    artifacts:
+      - mobile/ios/App/build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+    publishing:
+      email:
+        recipients:
+          - your@email.com    # ← 改成你的邮箱
+        notify:
+          success: true
+          failure: false
