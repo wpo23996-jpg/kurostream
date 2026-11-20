@@ -69,7 +69,9 @@ class HuangguoProvider(BaseProvider):
     # ------------------------------------------------------------------ parsing
     def _cards(self, html: str) -> list[Item]:
         soup = BeautifulSoup(html, "lxml")
-        out: list[Item] = []
+
+        # 先收集所有视频链接（id -> 标题/地址），保证顺序
+        links: list[tuple[str, str]] = []
         seen: set[str] = set()
         for a in soup.select("a[href*='/video/']"):
             m = VIDEO_RE.search(a.get("href", ""))
@@ -78,34 +80,43 @@ class HuangguoProvider(BaseProvider):
             vid = m.group(1)
             if vid in seen:
                 continue
-            title = a.get_text(" ", strip=True)
-            if not title:
-                continue
             seen.add(vid)
-            img = a.select_one("img")
-            if img is None and a.parent is not None:
-                # 列表卡片里图片常是 <a> 的兄弟节点
-                img = a.parent.select_one("img")
-            cover = ""
-            if img is not None:
-                cover = (
-                    img.get("data-src")
-                    or img.get("data-original")
-                    or img.get("data-lazy-src")
-                    or img.get("src")
-                    or ""
-                )
-                if cover.startswith("data:"):
-                    cover = ""
-                if cover.startswith("//"):
-                    cover = "https:" + cover
-                elif cover.startswith("/"):
-                    cover = BASE + cover
+            links.append((vid, a.get_text(" ", strip=True)))
+
+        if not links:
+            return []
+
+        # 再收集所有封面图（data-src 优先，跳过占位图/图标）
+        covers: list[str] = []
+        for img in soup.select("img"):
+            src = (
+                img.get("data-src")
+                or img.get("data-original")
+                or img.get("data-lazy-src")
+                or img.get("src")
+                or ""
+            )
+            if not src or src.startswith("data:"):
+                continue
+            if any(bad in src for bad in ("/static/", "cover-placeholder", "yandex", ".svg")):
+                continue
+            if src.startswith("//"):
+                src = "https:" + src
+            elif src.startswith("/"):
+                src = BASE + src
+            covers.append(src)
+
+        out: list[Item] = []
+        for idx, (vid, title) in enumerate(links):
+            # 卡片图与链接通常同序；数量对不上时按比例取，避免整页没图
+            cover = covers[idx] if idx < len(covers) else ""
+            if not cover and covers:
+                cover = covers[min(len(covers) - 1, int(idx * len(covers) / max(1, len(links))))]
             out.append(
                 Item(
                     provider=self.key,
                     id=vid,
-                    title=title,
+                    title=title or vid,
                     cover=cover,
                     url=f"{BASE}/video/{vid}/",
                 )
