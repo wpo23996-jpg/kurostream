@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import membership, orders, payments, providers
+from . import auth, membership, orders, payments, providers
 from .branding import internal_key, public_blurb, public_key, public_label
 from .cache import cache
 from .config import PUBLIC_BASE, SITE_NAME, SITE_TAGLINE, settings
@@ -40,8 +40,13 @@ WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
 # --------------------------------------------------------------------------- utils
 def uid_of(request: Request | None) -> str:
-    """Stable visitor identity: client-supplied id, else a hash of the peer IP."""
+    """身份优先级：登录 token > 客户端 uid > IP 哈希。"""
     if request is not None:
+        token = (request.headers.get("x-ks-token") or "").strip()
+        if token:
+            user = auth.user_of_token(token)
+            if user:
+                return user["uid"]
         raw = (request.headers.get("x-ks-uid") or "").strip()
         if 6 <= len(raw) <= 64 and all(c.isalnum() or c in "-_" for c in raw):
             return raw
@@ -316,19 +321,60 @@ async def api_detail(provider: str, id: str, request: Request, preview_tier: str
 
 
 # ------------------------------------------------------------------ account / pay
+# ------------------------------------------------------------------ account / pay
+@app.post("/api/register")
+def api_register(payload: dict = Body(...)) -> dict[str, Any]:
+    email = str(payload.get("email", ""))
+    password = str(payload.get("password", ""))
+    try:
+        user = auth.create_user(email, password)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    token = auth.issue_token(user["id"])
+    member = orders.Store.get().member(user["uid"])
+    return {"ok": True, "token": token, "user": {"email": user["email"], "uid": user["uid"]},
+            "member": member.to_dict()}
+
+
+@app.post("/api/login")
+def api_login(payload: dict = Body(...)) -> dict[str, Any]:
+    email = str(payload.get("email", ""))
+    password = str(payload.get("password", ""))
+    try:
+        user = auth.authenticate(email, password)
+    except ValueError as exc:
+        raise HTTPException(401, str(exc)) from exc
+    token = auth.issue_token(user["id"])
+    member = orders.Store.get().member(user["uid"])
+    return {"ok": True, "token": token, "user": {"email": user["email"], "uid": user["uid"]},
+            "member": member.to_dict()}
+
+
+@app.post("/api/logout")
+def api_logout(request: Request) -> dict[str, Any]:
+    token = (request.headers.get("x-ks-token") or "").strip()
+    if token:
+        auth.revoke(token)
+    return {"ok": True}
+
+
 @app.get("/api/me")
 def api_me(request: Request) -> dict[str, Any]:
     store = orders.Store.get()
     uid = uid_of(request)
     member = store.member(uid)
     owner = _is_owner(request)
+    user = auth.get_user(uid)
+    base = member.to_dict()
+    if owner:
+        base = {"uid": uid, "tier": "lifetime", "label": "店主", "expires_at": 0,
+                "expires_text": "永久", "active": True}
     return {
+        **base,
         "uid": uid,
-        **(member.to_dict() if not owner else {
-            "uid": uid, "tier": "lifetime", "label": "店主", "expires_at": 0,
-            "expires_text": "永久", "active": True,
-        }),
         "owner": owner,
+        "logged_in": bool(user),
+        "email": (user or {}).get("email", ""),
         "quota": {"used": store.usage_today(uid), "limit": orders.FREE_DAILY},
         "orders": store.orders_of(uid, 5),
     }
