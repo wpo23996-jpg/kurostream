@@ -69,8 +69,7 @@ def _download(seg_url: str, referer: str) -> bytes:
     return resp.content
 
 
-def _extract(data: bytes, seek: float, width: int) -> bytes:
-    """把分片写到临时文件，用 ffmpeg 定位截一帧。"""
+def _extract_once(data: bytes, seek: float, width: int) -> bytes | None:
     with tempfile.NamedTemporaryFile(suffix=".ts", delete=False) as tmp:
         tmp.write(data)
         tmp_path = tmp.name
@@ -85,16 +84,32 @@ def _extract(data: bytes, seek: float, width: int) -> bytes:
             "-q:v", "4",
             out_path,
         ]
-        r = subprocess.run(cmd, capture_output=True, timeout=20)
+        try:
+            r = subprocess.run(cmd, capture_output=True, timeout=25)
+        except subprocess.TimeoutExpired:
+            return None
         if r.returncode != 0 or not Path(out_path).exists():
-            raise RuntimeError((r.stderr or b"ffmpeg failed")[:120].decode("utf-8", "replace"))
-        return Path(out_path).read_bytes()
+            return None
+        body = Path(out_path).read_bytes()
+        return body or None
     finally:
         for p in (tmp_path, out_path):
             try:
                 Path(p).unlink()
             except Exception:  # noqa: BLE001
                 pass
+
+
+def _extract(data: bytes, seek: float, width: int) -> bytes:
+    """先按目标时间截，失败就退回分片开头（末尾几秒经常定位超出）。"""
+    pic = _extract_once(data, seek, width)
+    if pic is None and seek > 0.4:
+        pic = _extract_once(data, max(0.0, seek - 1.0), width)
+    if pic is None and seek > 0.1:
+        pic = _extract_once(data, 0.0, width)
+    if pic is None:
+        raise RuntimeError("ffmpeg 截帧失败")
+    return pic
 
 
 def get_thumb(seg_u: str, seek: float, referer_u: str = "", width: int = 320) -> bytes:
