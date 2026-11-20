@@ -232,9 +232,14 @@ async function viewHome(app, token) {
         }
         g.items.forEach((it) => track.append(cardEl(it, { showChannel: false })));
         if (g.error) head.append(el("span", "qbtn", "该频道暂不可用"));
-        const total = g.total || (g.total_pages > 1 ? `>${g.total_pages * g.items.length}` : g.items.length);
-        head.querySelector("h2").innerHTML =
-          `${esc(ch.label)} <small>${total} 部</small>`;
+        const total = g.total
+          ? `${g.total} 部`
+          : g.total_pages >= 9999
+          ? `持续更新`
+          : g.total_pages > 1
+          ? `>${(g.total_pages * g.items.length).toLocaleString()} 部`
+          : `${g.items.length} 部`;
+        head.querySelector("h2").innerHTML = `${esc(ch.label)} <small>${total}</small>`;
       })
       .catch(() => {
         if (token === state.reqToken) section.remove();

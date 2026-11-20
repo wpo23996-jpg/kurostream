@@ -77,10 +77,10 @@ class JableProvider(BaseProvider):
         }.get(sort, "/")
         last: Exception | None = None
         for route in dict.fromkeys([routes, "/"]):
+            # 实测：jable 分页是路径式 /latest-updates/2/，?page=N 会永远返回第一页
+            url = f"{self.base}{route}{page}/" if page > 1 else f"{self.base}{route}"
             try:
-                html = self.http.get(
-                    f"{self.base}{route}", params={"page": page} if page > 1 else None
-                ).text
+                html = self.http.get(url).text
                 items, pages = self._cards(html)
                 if items:
                     return SearchResult(items=items, page=page, total_pages=pages)
