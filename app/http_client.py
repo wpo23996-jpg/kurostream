@@ -9,6 +9,7 @@ from typing import Any
 
 from curl_cffi import requests as cr
 
+from .cf import solver
 from .config import settings
 
 log = logging.getLogger("kurostream.http")
@@ -93,12 +94,19 @@ class Http:
         full = url if url.startswith("http") else f"{self.base}/{url.lstrip('/')}"
         attempts = self.retries if retries is None else retries
         last: Exception | None = None
+        flare_cookies: dict[str, str] = {}
+        flare_ua: str = ""
+        flare_retried: bool = False
 
         for attempt in range(attempts):
             self.limiter.wait()
             hdrs = dict(self.default_headers)
             if referer:
                 hdrs["Referer"] = referer
+            if flare_ua:
+                hdrs["User-Agent"] = flare_ua
+            if flare_cookies:
+                hdrs["Cookie"] = "; ".join(f"{k}={v}" for k, v in flare_cookies.items())
             if headers:
                 hdrs.update(headers)
             try:
@@ -114,6 +122,17 @@ class Http:
                 text = "" if binary else resp.text
                 body = resp.content if binary else b""
                 if resp.status_code in (403, 429, 503) or any(m in text[:4000] for m in CF_MARKERS):
+                    # 第一次撞到 CF：解一次挑战，拿到 cf_clearance 后重试
+                    if solver.enabled and not flare_cookies:
+                        try:
+                            solved = solver.get(full, force=flare_retried)
+                            if solved:
+                                flare_cookies, flare_ua = solved
+                                flare_retried = True
+                                log.info("cloudflare: retrying %s with clearance cookie", full)
+                                continue
+                        except Exception as exc:  # noqa: BLE001
+                            log.warning("cloudflare solve failed for %s: %s", full, exc)
                     last = RuntimeError(f"blocked {resp.status_code} {full}")
                     log.warning("%s", last)
                     time.sleep(0.8 + attempt * 0.7)

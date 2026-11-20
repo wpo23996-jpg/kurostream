@@ -124,12 +124,34 @@ def _fetch_bytes(url: str, referer: str) -> tuple[bytes, str]:
 # ----------------------------------------------------------------------- API routes
 @app.get("/api/health")
 def health() -> dict[str, Any]:
+    from .cf import solver as cf_solver
+
     return {
         "ok": True,
         "providers": len(providers.CLASSES),
-        "version": os.getenv("KS_BUILD", "1.6.0"),
+        "version": os.getenv("KS_BUILD", "1.6.3"),
         "public_base": PUBLIC_BASE or None,
+        "flare": cf_solver.enabled,
     }
+
+
+@app.on_event("startup")
+async def _warmup_cloudflare() -> None:
+    """后台预热：先把最主要的两个源过了 CF 挑战，避免首屏卡 80 秒。"""
+    from .cf import solver as cf_solver
+
+    if not cf_solver.enabled:
+        return
+
+    async def warm() -> None:
+        for url in ("https://missav.ws/cn", "https://jable.tv/", "https://avple.tv/"):
+            try:
+                await asyncio.to_thread(cf_solver.get, url)
+                log.info("cf warmup ok: %s", url)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("cf warmup failed %s: %s", url, exc)
+
+    asyncio.create_task(warm())
 
 
 @app.get("/api/providers")
