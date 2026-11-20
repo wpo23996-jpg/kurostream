@@ -69,6 +69,59 @@ def _download(seg_url: str, referer: str) -> bytes:
     return resp.content
 
 
+def _extract_via_m3u8(seg_data: bytes, key_bytes: bytes, iv_hex: str, seek: float, width: int) -> bytes | None:
+    """加密分片：包一层本地 m3u8 让 ffmpeg 走 HLS 解密路径（-decryption_key 对裸 .ts 无效）。"""
+    tmpdir = tempfile.mkdtemp(prefix="kst")
+    try:
+        d = Path(tmpdir)
+        (d / "seg.ts").write_bytes(seg_data)
+        (d / "key.bin").write_bytes(key_bytes)
+        key_line = '#EXT-X-KEY:METHOD=AES-128,URI="key.bin"'
+        if iv_hex:
+            key_line += f",IV=0x{iv_hex}"
+        (d / "play.m3u8").write_text(
+            "\n".join(
+                [
+                    "#EXTM3U",
+                    "#EXT-X-VERSION:3",
+                    "#EXT-X-TARGETDURATION:10",
+                    key_line,
+                    "#EXTINF:10.0,",
+                    "seg.ts",
+                    "#EXT-X-ENDLIST",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        out = d / "out.jpg"
+        for at in (seek, max(0.0, seek - 1.0), 0.0):
+            cmd = [
+                FFMPEG, "-hide_banner", "-loglevel", "error", "-y",
+                "-protocol_whitelist", "file,crypto,data",
+                "-allowed_extensions", "ALL",
+                "-ss", f"{max(0.0, at):.3f}",
+                "-i", str(d / "play.m3u8"),
+                "-frames:v", "1",
+                "-vf", f"scale={width}:-2",
+                "-q:v", "4",
+                str(out),
+            ]
+            try:
+                r = subprocess.run(cmd, capture_output=True, timeout=25)
+            except subprocess.TimeoutExpired:
+                continue
+            if r.returncode == 0 and out.exists():
+                body = out.read_bytes()
+                if body:
+                    return body
+            if at <= 0.0:
+                break
+        return None
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
 def _extract_once(data: bytes, seek: float, width: int, key_hex: str = "") -> bytes | None:
     with tempfile.NamedTemporaryFile(suffix=".ts", delete=False) as tmp:
         tmp.write(data)
@@ -110,12 +163,11 @@ def _extract(data: bytes, seek: float, width: int, key_hex: str = "") -> bytes:
     if pic is None and seek > 0.1:
         pic = _extract_once(data, 0.0, width, key_hex)
     if pic is None:
-        raise RuntimeError("ffmpeg 截帧失败（可能是加密分片且没给密钥）")
+        raise RuntimeError("ffmpeg 截帧失败（明文分片也失败了）")
     return pic
 
 
-def fetch_key(key_url: str, referer: str = "") -> str:
-    """下载 AES-128 密钥，返回 ffmpeg 需要的 hex 字符串。"""
+def _download_key(key_url: str, referer: str = "") -> bytes:
     resp = cr.get(
         key_url,
         impersonate=settings.impersonate,
@@ -131,11 +183,16 @@ def fetch_key(key_url: str, referer: str = "") -> str:
     body = resp.content
     if len(body) < 16:
         raise RuntimeError(f"key 长度异常 {len(body)}")
-    return body[:16].hex()
+    return body[:16]
+
+
+def fetch_key(key_url: str, referer: str = "") -> str:
+    """下载 AES-128 密钥，返回 ffmpeg 需要的 hex 字符串。"""
+    return _download_key(key_url, referer).hex()
 
 
 def get_thumb(seg_u: str, seek: float, referer_u: str = "", width: int = 320,
-              key_u: str = "") -> bytes:
+              key_u: str = "", iv_hex: str = "") -> bytes:
     seg_url = b64d(seg_u)
     referer = b64d(referer_u) if referer_u else ""
     if not host_allowed(seg_url):
@@ -153,13 +210,17 @@ def get_thumb(seg_u: str, seek: float, referer_u: str = "", width: int = 320,
         if cache.exists():  # 等锁期间别人已经生成
             return cache.read_bytes()
         data = _download(seg_url, referer)
-        key_hex = ""
+
+        pic = None
         if key_url:
             try:
-                key_hex = fetch_key(key_url, referer)
+                key_bytes = _download_key(key_url, referer)
+                pic = _extract_via_m3u8(data, key_bytes, iv_hex, seek, width)
             except Exception as exc:  # noqa: BLE001
-                log.debug("thumb key fetch failed: %s", exc)
-        pic = _extract(data, seek, width, key_hex)
+                log.debug("thumb decrypt path failed: %s", exc)
+        if pic is None:
+            pic = _extract(data, seek, width)
+
         try:
             cache.write_bytes(pic)
         except Exception:  # noqa: BLE001

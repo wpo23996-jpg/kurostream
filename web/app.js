@@ -516,11 +516,13 @@ async function loadSegments(media) {
       if (!s) continue;
       if (s.startsWith("#EXT-X-KEY:")) {
         const km = /URI="([^"]+)"/.exec(s);
+        const im = /IV=0x([0-9a-fA-F]+)/.exec(s);
         if (km && km[1]) {
           const ku = km[1];
           const q = ku.includes("?") ? new URLSearchParams(ku.split("?")[1]) : null;
-          // 代理后的 key 地址形如 /api/media/raw?u=<b64>&r=<b64>
-          if (q && q.get("u")) P.keyUrl = { u: q.get("u"), r: q.get("r") || "" };
+          if (q && q.get("u")) {
+            P.keyUrl = { u: q.get("u"), r: q.get("r") || "", iv: im ? im[1] : "" };
+          }
         }
         continue;
       }
@@ -655,7 +657,10 @@ function buildControls(shell, video) {
     if (!seg) return;
     const off = Math.max(0, t - seg.start);
     let url = `/api/thumb?u=${encodeURIComponent(seg.u)}&t=${off.toFixed(2)}&r=${encodeURIComponent(seg.r)}&w=320`;
-    if (P.keyUrl && P.keyUrl.u) url += `&k=${encodeURIComponent(P.keyUrl.u)}`;
+    if (P.keyUrl && P.keyUrl.u) {
+      url += `&k=${encodeURIComponent(P.keyUrl.u)}`;
+      if (P.keyUrl.iv) url += `&iv=${P.keyUrl.iv}`;
+    }
     if (url === P.lastPreview) return;
     P.lastPreview = url;
     const img = new Image();
