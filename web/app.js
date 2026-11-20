@@ -306,7 +306,8 @@ async function viewChannel(app, key, token) {
       });
       page = p;
 
-      const exhausted = !g.items.length || added === 0 || p >= (g.total_pages || 1);
+      // 只按「这一页有没有新内容」判断，不依赖 total_pages（各站解析可靠性不一）
+      const exhausted = !g.items.length || added === 0 || p >= 800;
       if (p === 1 && added === 0) {
         grid.replaceChildren(emptyState("这个频道暂时没有内容"));
         done = true;
