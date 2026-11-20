@@ -1,53 +1,53 @@
-﻿name: Build iOS (unsigned ipa)
+name: Build iOS (unsigned ipa)
 
-# å…¬å¼€ä»“åº“çš„ macOS runner å®Œå…¨å…è´¹ï¼Œä¸ç”¨ Apple å¼€å‘è€…è´¦å·ä¹Ÿèƒ½å‡ºåŒ…ã€‚
-# äº§ç‰©æ˜¯ã€Œæœªç­¾å ipaã€ï¼Œç”¨ Sideloadly / AltStore é…åˆå…è´¹ Apple ID è‡ªç­¾å®‰è£…ï¼ˆ7 å¤©æœ‰æ•ˆï¼‰ã€‚
-# è¦å‡ºæ­£å¼ç­¾ååŒ…è¯·çœ‹ ios-signed.ymlã€‚
+# 公开仓库的 macOS runner 完全免费，不用 Apple 开发者账号也能出包。
+# 产物是「未签名 ipa」，用 Sideloadly / AltStore 配合免费 Apple ID 自签安装（7 天有效）。
+# 要出正式签名包请看 ios-signed.yml。
 
 on:
   workflow_dispatch:
     inputs:
       server_url:
-        description: 'æœåŠ¡å™¨åœ°å€ï¼ˆå¿…é¡» httpsï¼Œä¾‹å¦‚ https://kuro.example.comï¼‰'
+        description: '服务器地址（必须 https，例如 https://kuro.example.com）'
         required: true
         type: string
       app_name:
-        description: 'åº”ç”¨æ˜¾ç¤ºå'
+        description: '应用显示名'
         required: false
         default: 'KuroStream'
         type: string
       bundle_id:
-        description: 'Bundle Identifierï¼ˆä¸èƒ½å’Œåˆ«äººé‡å¤ï¼‰'
+        description: 'Bundle Identifier（不能和别人重复）'
         required: false
         default: 'com.kurostream.app'
         type: string
 
 jobs:
   build:
-    name: äº‘æž„å»º iOS ipa
+    name: 云构建 iOS ipa
     runs-on: macos-13
     timeout-minutes: 45
 
     steps:
-      - name: æ‹‰å–ä»£ç 
+      - name: 拉取代码
         uses: actions/checkout@v4
 
-      - name: æŸ¥çœ‹çŽ¯å¢ƒ
+      - name: 查看环境
         run: |
           xcodebuild -version
           xcrun simctl list devices available | head -5
-          pod --version || echo "CocoaPods ç¼ºå¤±"
+          pod --version || echo "CocoaPods 缺失"
 
-      - name: å®‰è£… Node 20
+      - name: 安装 Node 20
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: å®‰è£… Ruby ä¾èµ–ï¼ˆCocoaPodsï¼‰
+      - name: 安装 Ruby 依赖（CocoaPods）
         run: |
           sudo gem install cocoapods --no-document || true
 
-      - name: ç”Ÿæˆ wwwï¼ˆæ³¨å…¥æœåŠ¡å™¨åœ°å€ï¼‰
+      - name: 生成 www（注入服务器地址）
         working-directory: mobile
         env:
           KS_SERVER: ${{ inputs.server_url }}
@@ -55,12 +55,12 @@ jobs:
           npm install --no-audit --no-fund
           npm run sync:web
 
-      - name: ç”Ÿæˆ iOS å·¥ç¨‹
+      - name: 生成 iOS 工程
         working-directory: mobile
         env:
           BUNDLE_ID: ${{ inputs.bundle_id }}
         run: |
-          # ç”¨è¾“å…¥çš„ bundle id è¦†ç›– capacitor é…ç½®
+          # 用输入的 bundle id 覆盖 capacitor 配置
           node -e "
             const fs=require('fs');
             const p='capacitor.config.json';
@@ -71,20 +71,20 @@ jobs:
           "
           npx cap add ios
 
-      - name: åŒæ­¥èµ„æºå¹¶è£… Pods
+      - name: 同步资源并装 Pods
         working-directory: mobile
         run: |
           npx cap sync ios
           cd ios/App && pod install --repo-update || pod install
 
-      - name: æ”¹æ˜¾ç¤ºå
+      - name: 改显示名
         working-directory: mobile/ios/App
         env:
           APP_NAME: ${{ inputs.app_name }}
         run: |
           /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName '${APP_NAME}'" App/Info.plist || true
 
-      - name: å…è®¸ WebView å†…è”æ’­æ”¾ï¼ˆiOS å¿…é¡»ï¼‰
+      - name: 允许 WebView 内联播放（iOS 必须）
         working-directory: mobile/ios/App
         run: |
           /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity dict" App/Info.plist 2>/dev/null || true
@@ -92,7 +92,7 @@ jobs:
           /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes array" App/Info.plist 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes:0 string audio" App/Info.plist 2>/dev/null || true
 
-      - name: ç¼–è¯‘ï¼ˆä¸ç­¾åï¼‰
+      - name: 编译（不签名）
         working-directory: mobile/ios/App
         run: |
           set -o pipefail
@@ -108,12 +108,12 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             build | tail -60
 
-      - name: æ‰“åŒ…æˆ ipa
+      - name: 打包成 ipa
         working-directory: mobile/ios/App
         run: |
           APP_PATH="build/Build/Products/Release-iphoneos/App.app"
           if [ ! -d "$APP_PATH" ]; then
-            echo "::error::æ‰¾ä¸åˆ° $APP_PATH"
+            echo "::error::找不到 $APP_PATH"
             ls -R build/Build/Products | head -40
             exit 1
           fi
@@ -123,23 +123,23 @@ jobs:
           ls -lh KuroStream-unsigned.ipa
           unzip -l KuroStream-unsigned.ipa | head -8
 
-      - name: ä¸Šä¼ äº§ç‰©
+      - name: 上传产物
         uses: actions/upload-artifact@v4
         with:
           name: kurostream-ios-unsigned-${{ github.run_number }}
           path: mobile/ios/App/KuroStream-unsigned.ipa
           retention-days: 30
 
-      - name: æž„å»ºç»“æžœ
+      - name: 构建结果
         run: |
-          echo "### âœ… iOS æœªç­¾å ipa æž„å»ºå®Œæˆ" >> $GITHUB_STEP_SUMMARY
+          echo "### ✅ iOS 未签名 ipa 构建完成" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "åœ¨æœ¬æ¬¡è¿è¡Œé¡µåº•éƒ¨ **Artifacts** ä¸‹è½½ \`kurostream-ios-unsigned-*.zip\`" >> $GITHUB_STEP_SUMMARY
+          echo "在本次运行页底部 **Artifacts** 下载 \`kurostream-ios-unsigned-*.zip\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**å®‰è£…åˆ° iPhoneï¼š**" >> $GITHUB_STEP_SUMMARY
-          echo "1. Windows è£… [Sideloadly](https://sideloadly.io) + iTunes" >> $GITHUB_STEP_SUMMARY
-          echo "2. iPhone è¿žç”µè„‘å¹¶ä¿¡ä»»" >> $GITHUB_STEP_SUMMARY
-          echo "3. æŠŠ ipa æ‹–è¿› Sideloadlyï¼Œè¾“å…¥ä»»æ„ Apple ID" >> $GITHUB_STEP_SUMMARY
-          echo "4. æ‰‹æœºä¸Šã€Œè®¾ç½® â†’ é€šç”¨ â†’ VPNä¸Žè®¾å¤‡ç®¡ç†ã€ä¿¡ä»»è¯ä¹¦" >> $GITHUB_STEP_SUMMARY
+          echo "**安装到 iPhone：**" >> $GITHUB_STEP_SUMMARY
+          echo "1. Windows 装 [Sideloadly](https://sideloadly.io) + iTunes" >> $GITHUB_STEP_SUMMARY
+          echo "2. iPhone 连电脑并信任" >> $GITHUB_STEP_SUMMARY
+          echo "3. 把 ipa 拖进 Sideloadly，输入任意 Apple ID" >> $GITHUB_STEP_SUMMARY
+          echo "4. 手机上「设置 → 通用 → VPN与设备管理」信任证书" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "> å…è´¹ Apple ID ç­¾åçš„ App **7 å¤©åŽå¤±æ•ˆ**ï¼Œé‡æ–°æ‹–ä¸€æ¬¡å³å¯ã€‚" >> $GITHUB_STEP_SUMMARY
+          echo "> 免费 Apple ID 签名的 App **7 天后失效**，重新拖一次即可。" >> $GITHUB_STEP_SUMMARY
