@@ -140,7 +140,6 @@ def health() -> dict[str, Any]:
     }
 
 
-@app.on_event("startup")
 WARM_URLS = (
     "https://missav.ws/cn",
     "https://jable.tv/",
@@ -148,6 +147,8 @@ WARM_URLS = (
     "https://supjav.com/",
 )
 
+
+@app.on_event("startup")
 async def _warmup_cloudflare() -> None:
     """后台预热：串行把主要源过一遍挑战，避免首屏卡住、也避免并发压垮 FlareSolverr。"""
     from .cf import solver as cf_solver
