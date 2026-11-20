@@ -202,6 +202,23 @@ button { font: inherit; }
 .card .thumb img.failed {
   opacity: 1; background: linear-gradient(135deg, #1a1f27, #12161c);
 }
+
+/* 没封面时用标题首字 + 渐变色块，避免整屏只剩文字 */
+.card .thumb.no-cover {
+  display: grid; place-items: center;
+  background:
+    radial-gradient(circle at 30% 25%, rgba(255, 255, 255, .1), transparent 55%),
+    linear-gradient(140deg,
+      hsl(var(--h, 210) 38% 22%),
+      hsl(calc(var(--h, 210) + 40) 42% 14%));
+}
+.card .thumb.no-cover img { display: none; }
+.card .thumb.no-cover::after {
+  content: attr(data-initial);
+  font-size: 44px; font-weight: 700; color: rgba(255, 255, 255, .32);
+  text-shadow: 0 2px 12px rgba(0, 0, 0, .5);
+  line-height: 1;
+}
 .card .dur {
   position: absolute; right: 6px; bottom: 6px;
   background: rgba(0, 0, 0, .76); padding: 1px 6px; border-radius: 5px;

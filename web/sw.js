@@ -1,15 +1,15 @@
 /* KuroStream service worker
- * v1.7.2：静态资源改为「网络优先」，避免更新后浏览器一直跑旧版 app.js。
+ * v1.7.3：静态资源改为「网络优先」，避免更新后浏览器一直跑旧版 app.js。
  * 只缓存应用外壳，/api/ 一律直连。
  */
-const VERSION = "v1.7.2";
+const VERSION = "v1.7.3";
 const CACHE = `ks-${VERSION}`;
 
 const SHELL = [
   "/",
   "/index.html",
-  "/style.css?v=1.7.2",
-  "/app.js?v=1.7.2",
+  "/style.css?v=1.7.3",
+  "/app.js?v=1.7.3",
   "/vendor/hls.min.js",
   "/manifest.webmanifest",
   "/icons/icon-192.png",

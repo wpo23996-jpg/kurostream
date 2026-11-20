@@ -101,10 +101,19 @@ function cardEl(item, opts = {}) {
         }, 1200);
       } else {
         img.classList.add("failed");
+        thumb.classList.add("no-cover");
+        thumb.dataset.initial = (item.title || item.id || "?").trim().charAt(0);
       }
     };
     img.src = apiUrl(item.cover_proxy);
     thumb.append(img);
+  } else {
+    // 没有封面（如图床加密拿不到）→ 用标题首字做渐变占位，别只剩空白
+    thumb.classList.add("no-cover");
+    thumb.dataset.initial = (item.title || item.id || "?").trim().charAt(0);
+    const hue = [...String(item.id || item.title || "x")].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 360, 0);
+    thumb.dataset.hue = String(hue);
+    thumb.style.setProperty("--h", String(hue));
   }
   if (item.duration) thumb.append(el("span", "dur", esc(item.duration)));
   if (opts.showChannel !== false) {
