@@ -483,6 +483,8 @@ async def media_hls(u: str, r: str = "") -> Response:
 
 @app.get("/api/media/raw")
 def media_raw(u: str, r: str = "", request: Request = None):
+    from . import segcache
+
     try:
         url = b64d(u)
         ref = b64d(r) if r else url
@@ -491,9 +493,24 @@ def media_raw(u: str, r: str = "", request: Request = None):
     if not host_allowed(url):
         raise HTTPException(403, "host not allowed")
 
+    rng = request.headers.get("range") if request else None
+
+    # 无 Range 的分片请求：先查磁盘缓存，命中直接返回（拖动进度秒开）
+    if not rng:
+        hit = segcache.get(url)
+        if hit is not None:
+            return Response(
+                hit,
+                media_type="application/octet-stream",
+                headers={
+                    "Access-Control-Allow-Origin": "*",
+                    "Cache-Control": "public, max-age=86400",
+                    "X-Seg-Cache": "hit",
+                },
+            )
+
     sess = cr.Session(impersonate=settings.impersonate)
     headers = {"User-Agent": settings.user_agent, "Referer": ref, "Accept": "*/*"}
-    rng = request.headers.get("range") if request else None
     if rng:
         headers["Range"] = rng
     try:
@@ -505,6 +522,24 @@ def media_raw(u: str, r: str = "", request: Request = None):
     if resp.status_code >= 400:
         sess.close()
         raise HTTPException(resp.status_code, f"upstream {resp.status_code}")
+
+    # 小分片整块读入并缓存，避免反复回源
+    if not rng:
+        try:
+            body = resp.content
+        finally:
+            sess.close()
+        if body:
+            segcache.put(url, body)
+        return Response(
+            body,
+            media_type=resp.headers.get("content-type", "application/octet-stream"),
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Cache-Control": "public, max-age=86400",
+                "X-Seg-Cache": "miss",
+            },
+        )
 
     out: dict[str, str] = {"Access-Control-Allow-Origin": "*"}
     for k in ("content-type", "content-length", "content-range", "accept-ranges", "etag", "last-modified"):
@@ -522,6 +557,13 @@ def media_raw(u: str, r: str = "", request: Request = None):
             sess.close()
 
     return StreamingResponse(stream(), status_code=resp.status_code, headers=out)
+
+
+@app.get("/api/cache-stats")
+def api_cache_stats() -> dict[str, Any]:
+    from . import segcache, thumb
+
+    return {"segments": segcache.stats(), "thumbs": thumb.stats()}
 
 
 @app.get("/api/img")
