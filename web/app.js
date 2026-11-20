@@ -488,23 +488,223 @@ async function viewDetail(app, provider, id, token) {
 }
 
 /* ------------------------------------------------------------------ player */
+const P = {
+  segs: [],
+  media: null,
+  item: null,
+  previewTimer: null,
+  lastPreview: "",
+};
+
+async function loadSegments(media) {
+  P.segs = [];
+  if (media.kind !== "hls") return;
+  try {
+    const r = await fetch(apiUrl(media.play));
+    if (!r.ok) return;
+    const text = await r.text();
+    let t = 0;
+    let dur = 4;
+    const out = [];
+    for (const raw of text.split("\n")) {
+      const s = raw.trim();
+      if (!s) continue;
+      if (s.startsWith("#EXTINF:")) {
+        dur = parseFloat(s.slice(8)) || 4;
+        continue;
+      }
+      if (s.startsWith("#")) continue;
+      const q = s.includes("?") ? new URLSearchParams(s.split("?")[1]) : null;
+      if (!q || !q.get("u")) continue;
+      out.push({ start: t, end: t + dur, u: q.get("u"), r: q.get("r") || "" });
+      t += dur;
+    }
+    P.segs = out;
+  } catch (_) {
+    P.segs = [];
+  }
+}
+
+function findSeg(t) {
+  const segs = P.segs;
+  if (!segs.length) return null;
+  let lo = 0;
+  let hi = segs.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const s = segs[mid];
+    if (t < s.start) hi = mid - 1;
+    else if (t >= s.end) lo = mid + 1;
+    else return s;
+  }
+  return segs[Math.min(segs.length - 1, Math.max(0, lo))];
+}
+
+function fmtTime(s) {
+  if (!isFinite(s) || s < 0) s = 0;
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = Math.floor(s % 60);
+  const mm = String(m).padStart(2, "0");
+  const ss = String(sec).padStart(2, "0");
+  return h ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
+function buildControls(shell, video) {
+  const bar = el("div", "ctrl-bar");
+  bar.innerHTML = `
+    <button class="c-btn pp" title="播放/暂停 (空格)">▶</button>
+    <div class="progress-wrap">
+      <div class="ptrack">
+        <div class="pbuf"></div>
+        <div class="pplayed"></div>
+      </div>
+      <div class="preview"><div class="pv-img"></div><div class="pv-time">00:00</div></div>
+    </div>
+    <span class="ptime">00:00 / 00:00</span>
+    <button class="c-btn mute" title="静音">🔊</button>
+    <button class="c-btn fs" title="全屏 (F)">⛶</button>`;
+  shell.append(bar);
+
+  const pp = bar.querySelector(".pp");
+  const track = bar.querySelector(".ptrack");
+  const buf = bar.querySelector(".pbuf");
+  const played = bar.querySelector(".pplayed");
+  const timeEl = bar.querySelector(".ptime");
+  const mute = bar.querySelector(".mute");
+  const fsBtn = bar.querySelector(".fs");
+  const pv = bar.querySelector(".preview");
+  const pvImg = bar.querySelector(".pv-img");
+  const pvTime = bar.querySelector(".pv-time");
+  const wrap = bar.querySelector(".progress-wrap");
+
+  const toggle = () => (video.paused ? video.play().catch(() => {}) : video.pause());
+  pp.onclick = toggle;
+  video.addEventListener("click", toggle);
+  video.addEventListener("play", () => (pp.textContent = "❚❚"));
+  video.addEventListener("pause", () => (pp.textContent = "▶"));
+
+  const render = () => {
+    const d = video.duration || 0;
+    const p = d ? (video.currentTime / d) * 100 : 0;
+    played.style.width = p + "%";
+    try {
+      if (video.buffered.length) {
+        buf.style.width = (video.buffered.end(video.buffered.length - 1) / (d || 1)) * 100 + "%";
+      }
+    } catch (_) {}
+    timeEl.textContent = `${fmtTime(video.currentTime)} / ${fmtTime(d)}`;
+  };
+  video.addEventListener("timeupdate", render);
+  video.addEventListener("progress", render);
+  video.addEventListener("loadedmetadata", render);
+
+  /* 拖动 / 点击跳转 */
+  let dragging = false;
+  const seekTo = (clientX) => {
+    const rect = track.getBoundingClientRect();
+    const pct = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    if (video.duration) video.currentTime = pct * video.duration;
+  };
+  track.addEventListener("pointerdown", (e) => {
+    dragging = true;
+    track.setPointerCapture(e.pointerId);
+    seekTo(e.clientX);
+  });
+  track.addEventListener("pointermove", (e) => {
+    if (dragging) seekTo(e.clientX);
+  });
+  track.addEventListener("pointerup", (e) => {
+    dragging = false;
+    try {
+      track.releasePointerCapture(e.pointerId);
+    } catch (_) {}
+  });
+
+  /* 悬停预览：按时间找到分片，向后端要一帧 */
+  const showPreview = (clientX) => {
+    const rect = track.getBoundingClientRect();
+    const pct = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    const d = video.duration || 0;
+    if (!d) {
+      pv.classList.remove("on");
+      return;
+    }
+    const t = pct * d;
+    const left = pct * rect.width;
+    pv.classList.add("on");
+    pv.style.left = Math.max(40, Math.min(rect.width - 40, left)) + "px";
+    pvTime.textContent = fmtTime(t);
+
+    const seg = findSeg(t);
+    if (!seg) return;
+    const off = Math.max(0, t - seg.start);
+    const url = `/api/thumb?u=${encodeURIComponent(seg.u)}&t=${off.toFixed(2)}&r=${encodeURIComponent(seg.r)}&w=320`;
+    if (url === P.lastPreview) return;
+    P.lastPreview = url;
+    const img = new Image();
+    img.onload = () => {
+      if (P.lastPreview === url) pvImg.style.backgroundImage = `url("${apiUrl(url)}")`;
+    };
+    img.src = apiUrl(url);
+  };
+
+  let pvRaf = 0;
+  wrap.addEventListener("pointermove", (e) => {
+    if (pvRaf) return;
+    pvRaf = requestAnimationFrame(() => {
+      pvRaf = 0;
+      showPreview(e.clientX);
+    });
+  });
+  wrap.addEventListener("pointerleave", () => {
+    pv.classList.remove("on");
+    P.lastPreview = "";
+  });
+
+  mute.onclick = () => {
+    video.muted = !video.muted;
+    mute.textContent = video.muted ? "🔇" : "🔊";
+  };
+  fsBtn.onclick = () => {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else if (shell.requestFullscreen) shell.requestFullscreen();
+    else if (video.webkitEnterFullscreen) video.webkitEnterFullscreen();
+  };
+  video.addEventListener("volumechange", () => {
+    mute.textContent = video.muted || video.volume === 0 ? "🔇" : "🔊";
+  });
+
+  return { bar, render };
+}
+
 function play(media, item, opts = {}) {
   const video = $("#player");
   if (!video) return;
+  const shell = video.closest(".player-shell") || video.parentElement;
   const msg = $(".player-msg");
   const posKey = `ks_pos:${item.provider}:${item.id}`;
   const keep = opts.restore ? Number(localStorage.getItem(posKey) || 0) : video.currentTime || 0;
 
   destroyPlayers();
   msg.classList.remove("show");
+  video.removeAttribute("controls");
   video.pause();
   video.removeAttribute("src");
   video.load();
 
+  if (!shell.querySelector(".ctrl-bar")) buildControls(shell, video);
+  document.querySelectorAll(".ctrl-bar").forEach((b) => {
+    if (!shell.contains(b)) b.remove();
+  });
+
+  P.media = media;
+  P.item = item;
+  loadSegments(media);
+
   const onMeta = () => {
     video.removeEventListener("loadedmetadata", onMeta);
-    const target = opts.restore ? keep : keep;
-    if (target > 5 && target < (video.duration || 1e9) - 10) video.currentTime = target;
+    if (keep > 5 && keep < (video.duration || 1e9) - 10) video.currentTime = keep;
     video.play().catch(() => {});
   };
   video.addEventListener("loadedmetadata", onMeta);
@@ -564,6 +764,8 @@ function destroyPlayers() {
       v.load();
     } catch (_) {}
   }
+  P.segs = [];
+  P.lastPreview = "";
 }
 
 function bindPlayerKeys(video) {

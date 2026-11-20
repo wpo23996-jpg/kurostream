@@ -495,6 +495,25 @@ def api_img(u: str, r: str = "") -> Response:
     )
 
 
+@app.get("/api/thumb")
+def api_thumb(u: str, t: float = 0.0, r: str = "", w: int = 320) -> Response:
+    """进度条预览帧：u = base64 分片地址，t = 片内秒数，r = base64 Referer。"""
+    from .thumb import get_thumb
+
+    try:
+        body = get_thumb(u, t, r, max(120, min(640, w)))
+    except ValueError as exc:
+        raise HTTPException(403, str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        log.warning("thumb failed: %s", exc)
+        raise HTTPException(502, f"{type(exc).__name__}: {exc}") from exc
+    return Response(
+        body,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "public, max-age=604800", "Access-Control-Allow-Origin": "*"},
+    )
+
+
 # ------------------------------------------------------------------------ frontend
 if WEB_DIR.exists():
     app.mount("/", StaticFiles(directory=str(WEB_DIR), html=True), name="web")
