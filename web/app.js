@@ -221,7 +221,7 @@ async function viewHome(app, token) {
     section.append(head, track);
     container.append(section);
 
-    api(`/api/browse?provider=${encodeURIComponent(ch.key)}&limit=14&sort=new`)
+    api(`/api/browse?provider=${encodeURIComponent(ch.key)}&limit=30&sort=new`)
       .then((data) => {
         if (token !== state.reqToken) return;
         const g = data.groups[0];
@@ -232,8 +232,9 @@ async function viewHome(app, token) {
         }
         g.items.forEach((it) => track.append(cardEl(it, { showChannel: false })));
         if (g.error) head.append(el("span", "qbtn", "该频道暂不可用"));
+        const total = g.total || (g.total_pages > 1 ? `>${g.total_pages * g.items.length}` : g.items.length);
         head.querySelector("h2").innerHTML =
-          `${esc(ch.label)} <small>${g.items.length} 部</small>`;
+          `${esc(ch.label)} <small>${total} 部</small>`;
       })
       .catch(() => {
         if (token === state.reqToken) section.remove();
@@ -280,7 +281,7 @@ async function viewChannel(app, key, token) {
     }
     try {
       const data = await api(
-        `/api/browse?provider=${encodeURIComponent(key)}&page=${p}&sort=${state.sort}&limit=48`
+        `/api/browse?provider=${encodeURIComponent(key)}&page=${p}&sort=${state.sort}&limit=120`
       );
       if (token !== state.reqToken) return;
       const g = data.groups[0];
@@ -506,7 +507,10 @@ async function loadSegments(media) {
   if (media.kind !== "hls") return;
   try {
     const r = await fetch(apiUrl(media.play));
-    if (!r.ok) return;
+    if (!r.ok) {
+      console.warn("[kuro] playlist 请求失败", r.status, media.play);
+      return;
+    }
     const text = await r.text();
     let t = 0;
     let dur = 4;
@@ -537,7 +541,9 @@ async function loadSegments(media) {
       t += dur;
     }
     P.segs = out;
-  } catch (_) {
+    console.info(`[kuro] 分片表 ${out.length} 段，总时长 ${t.toFixed(0)}s，密钥=${P.keyUrl ? "有" : "无"}`);
+  } catch (err) {
+    console.warn("[kuro] 解析分片表失败", err);
     P.segs = [];
   }
 }
@@ -642,11 +648,9 @@ function buildControls(shell, video) {
   const showPreview = (clientX) => {
     const rect = track.getBoundingClientRect();
     const pct = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
-    const d = video.duration || 0;
-    if (!d) {
-      pv.classList.remove("on");
-      return;
-    }
+    // 视频元数据还没到就用分片表推算总时长，否则预览永远不显示
+    const d = video.duration || (P.segs.length ? P.segs[P.segs.length - 1].end : 0);
+    if (!d) return;
     const t = pct * d;
     const left = pct * rect.width;
     pv.classList.add("on");
@@ -654,7 +658,10 @@ function buildControls(shell, video) {
     pvTime.textContent = fmtTime(t);
 
     const seg = findSeg(t);
-    if (!seg) return;
+    if (!seg) {
+      pvImg.style.backgroundImage = "";
+      return;
+    }
     const off = Math.max(0, t - seg.start);
     let url = `/api/thumb?u=${encodeURIComponent(seg.u)}&t=${off.toFixed(2)}&r=${encodeURIComponent(seg.r)}&w=320`;
     if (P.keyUrl && P.keyUrl.u) {
@@ -663,9 +670,13 @@ function buildControls(shell, video) {
     }
     if (url === P.lastPreview) return;
     P.lastPreview = url;
+    pvImg.style.backgroundImage = "";  // 先清掉旧图，避免错位
     const img = new Image();
     img.onload = () => {
       if (P.lastPreview === url) pvImg.style.backgroundImage = `url("${apiUrl(url)}")`;
+    };
+    img.onerror = () => {
+      if (P.lastPreview === url) pv.classList.remove("on");
     };
     img.src = apiUrl(url);
   };
@@ -732,7 +743,14 @@ function play(media, item, opts = {}) {
 
   if (media.kind === "hls") {
     if (window.Hls && Hls.isSupported()) {
-      const h = new Hls({ maxBufferLength: 30, maxMaxBufferLength: 120, enableWorker: true });
+      const h = new Hls({
+        maxBufferLength: 60,
+        maxMaxBufferLength: 180,
+        backBufferLength: 30,
+        enableWorker: true,
+        lowLatencyMode: false,
+        progressive: true,
+      });
       state.players.push(h);
       h.loadSource(apiUrl(media.play));
       h.attachMedia(video);

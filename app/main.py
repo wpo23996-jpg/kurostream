@@ -576,6 +576,8 @@ def api_cache_stats() -> dict[str, Any]:
 
 @app.get("/api/img")
 def api_img(u: str, r: str = "") -> Response:
+    from . import segcache
+
     try:
         url = b64d(u)
         ref = b64d(r) if r else ""
@@ -583,11 +585,24 @@ def api_img(u: str, r: str = "") -> Response:
         raise HTTPException(400, "bad base64") from exc
     if not host_allowed(url):
         raise HTTPException(403, "host not allowed")
+
+    hit = segcache.get("img:" + url)
+    if hit is not None:
+        return Response(
+            hit,
+            media_type="image/jpeg",
+            headers={"Cache-Control": "public, max-age=604800",
+                     "Access-Control-Allow-Origin": "*", "X-Img-Cache": "hit"},
+        )
+
     body, ctype = _fetch_bytes(url, referer=ref or _referer_for(url) or "/")
+    if body:
+        segcache.put("img:" + url, body)
     return Response(
         body,
         media_type=ctype,
-        headers={"Cache-Control": "public, max-age=86400", "Access-Control-Allow-Origin": "*"},
+        headers={"Cache-Control": "public, max-age=86400",
+                 "Access-Control-Allow-Origin": "*", "X-Img-Cache": "miss"},
     )
 
 
